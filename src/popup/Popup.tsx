@@ -15,9 +15,6 @@ import { useI18n } from '@shared/i18n';
 import { Menu, Settings, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-preact';
 import { LinkDialog } from './components/LinkDialog';
 import { WidgetDialog } from './components/WidgetDialog';
-import { recordOperation, setOutboxOwner } from '@shared/sync/outbox';
-import { notifyLocalMutation } from '@shared/sync';
-import { getSession, subscribeAuthState } from '@shared/auth/auth';
 import { uiButtonPrimaryClass, uiButtonSecondaryClass, uiIconButtonClass, uiSelectClass } from '@shared/ui/classes';
 
 type DialogMode = 'add-link' | { edit: string } | 'widget';
@@ -33,32 +30,11 @@ export function Popup() {
   const { t } = useI18n();
 
   useEffect(() => {
-    loadData().then(async (loaded) => {
+    loadData().then((loaded) => {
       setData(loaded);
       setActiveBoardId(getInitialBoardId(loaded));
-      try {
-        const session = await getSession();
-        setOutboxOwner(session?.user?.id);
-      } catch { /* supabase not configured */ }
     });
     queryActiveTab().then(setTabInfo);
-  }, []);
-
-  useEffect(() => {
-    try {
-      return subscribeAuthState((session, event) => {
-        if (event === 'SIGNED_OUT') {
-          setOutboxOwner(undefined);
-        } else if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-          setOutboxOwner(session.user.id);
-        } else if (event === 'INITIAL_SESSION') {
-          setOutboxOwner(undefined);
-        }
-      });
-    } catch {
-      setOutboxOwner(undefined);
-      return undefined;
-    }
   }, []);
 
   useEffect(() => {
@@ -88,11 +64,6 @@ export function Popup() {
   const handleSave = async () => {
     if (!tabInfo?.url || !activeBoardId || !data) return;
 
-    try {
-      const session = await getSession();
-      setOutboxOwner(session?.user?.id);
-    } catch { /* supabase not configured */ }
-
     setStatus('saving');
 
     try {
@@ -103,14 +74,11 @@ export function Popup() {
         const widget = createWidget('links', activeBoard?.title || 'Links');
         next = addWidget(next, activeBoardId, widget);
         widgetId = widget.id;
-        const inserted = next.workspaces.find((w) => w.id === activeBoardId)?.widgets.find((widget) => widget.id === widgetId);
-        if (inserted) await recordOperation('widget', `${activeBoardId}/${widgetId}`, 'put', inserted);
       }
 
       const link = createLink(tabInfo.title, tabInfo.url);
       if (tabInfo.favicon) link.favicon = tabInfo.favicon;
       next = addLink(next, activeBoardId, widgetId, link);
-      await recordOperation('link', `${activeBoardId}/${widgetId}/${link.id}`, 'put', link);
 
       const saveResult = await saveData(next);
       if (!saveResult.ok) {
@@ -120,7 +88,6 @@ export function Popup() {
       }
       setData(next);
       setStatus('saved');
-      notifyLocalMutation();
       setTimeout(() => window.close(), 900);
     } catch (err) {
       console.error('[Popup] save failed:', err instanceof Error ? err.message : String(err));
@@ -133,11 +100,6 @@ export function Popup() {
     if (!data || !activeBoardId) return;
 
     try {
-      const session = await getSession();
-      setOutboxOwner(session?.user?.id);
-    } catch { /* supabase not configured */ }
-
-    try {
       let next = data;
       let widgetId = selectedWidgetId;
 
@@ -146,13 +108,10 @@ export function Popup() {
         next = addWidget(next, activeBoardId, widget);
         widgetId = widget.id;
         setSelectedWidgetId(widgetId);
-        const inserted = next.workspaces.find((w) => w.id === activeBoardId)?.widgets.find((widget) => widget.id === widgetId);
-        if (inserted) await recordOperation('widget', `${activeBoardId}/${widgetId}`, 'put', inserted);
       }
 
       const link = createLink(title, url);
       next = addLink(next, activeBoardId, widgetId, link);
-      await recordOperation('link', `${activeBoardId}/${widgetId}/${link.id}`, 'put', link);
 
       const saveResult = await saveData(next);
       if (!saveResult.ok) {
@@ -160,7 +119,6 @@ export function Popup() {
         return;
       }
       setData(next);
-      notifyLocalMutation();
       setDialog(null);
     } catch (err) {
       console.error('[Popup] addLink failed:', err instanceof Error ? err.message : String(err));
@@ -173,14 +131,12 @@ export function Popup() {
 
     try {
       const next = updateLink(data, activeBoardId, selectedWidgetId, linkId, { title, url });
-      await recordOperation('link', `${activeBoardId}/${selectedWidgetId}/${linkId}`, 'patch', { title, url });
       const saveResult = await saveData(next);
       if (!saveResult.ok) {
         setStorageFailure(true);
         return;
       }
       setData(next);
-      notifyLocalMutation();
       setDialog(null);
     } catch (err) {
       console.error('[Popup] editLink failed:', err instanceof Error ? err.message : String(err));
@@ -193,14 +149,12 @@ export function Popup() {
 
     try {
       const next = deleteLink(data, activeBoardId, selectedWidgetId, linkId);
-      await recordOperation('link', `${activeBoardId}/${selectedWidgetId}/${linkId}`, 'delete', null);
       const saveResult = await saveData(next);
       if (!saveResult.ok) {
         setStorageFailure(true);
         return;
       }
       setData(next);
-      notifyLocalMutation();
     } catch (err) {
       console.error('[Popup] deleteLink failed:', err instanceof Error ? err.message : String(err));
       setStorageFailure(true);
@@ -212,14 +166,12 @@ export function Popup() {
 
     try {
       const next = updateWidget(data, activeBoardId, selectedWidgetId, { title });
-      await recordOperation('widget', `${activeBoardId}/${selectedWidgetId}`, 'patch', { title });
       const saveResult = await saveData(next);
       if (!saveResult.ok) {
         setStorageFailure(true);
         return;
       }
       setData(next);
-      notifyLocalMutation();
       setDialog(null);
     } catch (err) {
       console.error('[Popup] widgetSave failed:', err instanceof Error ? err.message : String(err));
@@ -231,8 +183,7 @@ export function Popup() {
     if (!data || !activeBoardId || !selectedWidgetId) return;
 
     try {
-      let next = deleteWidget(data, activeBoardId, selectedWidgetId);
-      await recordOperation('widget', `${activeBoardId}/${selectedWidgetId}`, 'delete', null);
+      const next = deleteWidget(data, activeBoardId, selectedWidgetId);
       const remaining = getWidgetsForBoard(next, activeBoardId).filter((w): w is LinksWidget => w.type === 'links');
       setSelectedWidgetId(remaining[0]?.id);
       const saveResult = await saveData(next);
@@ -241,7 +192,6 @@ export function Popup() {
         return;
       }
       setData(next);
-      notifyLocalMutation();
       setDialog(null);
     } catch (err) {
       console.error('[Popup] widgetDelete failed:', err instanceof Error ? err.message : String(err));

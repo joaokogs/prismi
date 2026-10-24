@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Settings, Menu, Plus, Palette, User, Check } from 'lucide-preact';
+import { Settings, Menu, Plus, Palette } from 'lucide-preact';
 import type { AppData, ThemeConfig, UploadedBackground, Widget, WidgetType, TopWidgetConfig, SearchEngine } from '@shared/types';
-import { DEFAULT_WALLPAPERS, SEARCH_ENGINES, LOCAL_ONLY_SETTINGS_KEYS } from '@shared/types/constants';
+import { DEFAULT_WALLPAPERS, SEARCH_ENGINES } from '@shared/types/constants';
 import { getDefaultData } from '@shared/types/defaults';
 import { useI18n, setLocale as setI18nLocale } from '@shared/i18n';
 import {
@@ -22,7 +22,6 @@ import { WidgetGrid } from './components/widgets/WidgetGrid';
 import { WidgetEditor } from './components/dialogs/WidgetEditor';
 import { LinkDialog } from './components/dialogs/LinkDialog';
 import { SettingsPanel } from './components/settings/SettingsPanel';
-import { AuthPanel } from './components/settings/AuthPanel';
 import { BackgroundPanel } from './components/settings/BackgroundPanel';
 import { TopInfoWidgets } from './components/layout/TopInfoWidgets';
 import { WidgetToolbar } from './components/settings/WidgetToolbar';
@@ -36,20 +35,8 @@ import { notifyMenuOpened, subscribeToMenuClose } from './utils/menu';
 import { computeThemeVariables } from '@shared/theme';
 import { browser, openUrl } from '@shared/browser';
 import type { Bookmarks, Storage } from 'webextension-polyfill';
-import {
-  initializeSync,
-  notifyLocalMutation,
-  setupOnlineListener,
-  cleanup as cleanupSync,
-  setLocalDataProvider,
-  setRemoteAppliedHandler,
-  getSyncState,
-  onSyncStateChange,
-  retryDeadLetters,
-} from '@shared/sync';
-import { migrateAppData } from '@shared/sync/migrate';
-import { recordOperation } from '@shared/sync/outbox';
-import { mergeWorkspaces } from '@shared/sync/merge';
+import { migrateAppData } from '@shared/storage/migrate';
+import { mergeWorkspaces } from '@shared/storage/merge';
 import './styles/index.css';
 
 function looksLikeUrl(str: string): boolean {
@@ -59,17 +46,6 @@ function looksLikeUrl(str: string): boolean {
 function ensureProtocol(str: string): string {
   if (/^https?:\/\//i.test(str)) return str;
   return `https://${str}`;
-}
-
-function safeRecordOperation(
-  entity: Parameters<typeof recordOperation>[0],
-  entityId: string,
-  action: Parameters<typeof recordOperation>[2],
-  payload: unknown,
-): void {
-  void recordOperation(entity, entityId, action, payload).catch((err) => {
-    console.error('[App] recordOperation failed:', err instanceof Error ? err.message : String(err));
-  });
 }
 
 interface ConfirmState {
@@ -110,8 +86,6 @@ async function removeVideoBackgrounds(data: AppData): Promise<AppData> {
   };
 }
 
-type SyncToastKind = 'syncing' | 'success' | null;
-
 function ensureRenderableData(data: AppData): AppData {
   const normalized = migrateAppData(data);
   if (getBoards(normalized).length > 0) return normalized;
@@ -138,7 +112,6 @@ export function App() {
   const [activeBoardId, setActiveBoardId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [showAccount, setShowAccount] = useState(false);
   const [showBackground, setShowBackground] = useState(false);
   const [showWidgetToolbar, setShowWidgetToolbar] = useState(false);
   const [isAddingWidget, setIsAddingWidget] = useState(false);
@@ -152,27 +125,12 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchEngine, setSearchEngine] = useState<SearchEngine>('google');
   const [wallpaperObjectUrl, setWallpaperObjectUrl] = useState<string | null>(null);
-  const [initialSyncPending, setInitialSyncPending] = useState(true);
-  const [syncToastKind, setSyncToastKind] = useState<SyncToastKind>('syncing');
-  const [syncToastVisible, setSyncToastVisible] = useState(false);
   const [storageFailure, setStorageFailure] = useState(false);
-  const [deadLetterOps, setDeadLetterOps] = useState(0);
-  const lastPullAtRef = useRef<number | undefined>(getSyncState().lastPullAt);
-  const syncToastHideTimerRef = useRef<number | null>(null);
   const gcIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    setLocalDataProvider(() => latestDataRef.current);
-    setRemoteAppliedHandler((next) => {
-      if (!mounted) return;
-      const renderable = ensureRenderableData(next);
-      initSyncPendingRef.current = false;
-      lastRemoteAppliedRef.current = renderable;
-      setData(renderable);
-      setActiveBoardId((current) => getBoards(renderable).some((board) => board.id === current) ? current : getInitialBoardId(renderable));
-    });
-    loadData().then(async (loaded) => {
+    loadData().then((loaded) => {
       if (!mounted) return;
       const initial = ensureRenderableData(loaded);
       setData(initial);
@@ -180,28 +138,6 @@ export function App() {
       if (initial.settings.locale) {
         setI18nLocale(initial.settings.locale as any);
       }
-
-      initSyncPendingRef.current = true;
-      initializeSync(initial)
-        .then((merged) => {
-          const synchronized = ensureRenderableData(merged);
-          if (!synchronized.settings.themeConfig) {
-            const themeConfig = getThemeConfigForPersist();
-            safeRecordOperation('themeConfig', 'themeConfig', 'put', themeConfig);
-            const backfilled: AppData = {
-              ...synchronized,
-              settings: { ...synchronized.settings, themeConfig },
-            };
-            setData(backfilled);
-          } else if (synchronized !== merged && mounted) {
-            setData(synchronized);
-            setActiveBoardId((current) => getBoards(synchronized).some((board) => board.id === current) ? current : getInitialBoardId(synchronized));
-          }
-        })
-        .finally(() => {
-          initSyncPendingRef.current = false;
-          setInitialSyncPending(false);
-        });
 
       void removeVideoBackgrounds(initial).then((cleaned) => {
         if (!mounted || cleaned === initial || latestDataRef.current !== initial) return;
@@ -217,9 +153,6 @@ export function App() {
       const fallback = getDefaultData();
       setData(fallback);
       setActiveBoardId(getInitialBoardId(fallback));
-      setInitialSyncPending(false);
-      setSyncToastKind(null);
-      setSyncToastVisible(false);
     });
     return () => {
       mounted = false;
@@ -228,8 +161,6 @@ export function App() {
 
   const saveDebounceRef = useRef<number | null>(null);
   const latestDataRef = useRef<AppData | null>(null);
-  const lastRemoteAppliedRef = useRef<AppData | null>(null);
-  const initSyncPendingRef = useRef(false);
   const themeHydratingRef = useRef(true);
 
   useEffect(() => {
@@ -240,11 +171,6 @@ export function App() {
         saveDebounceRef.current = null;
         if (latestDataRef.current) {
           saveData(latestDataRef.current);
-          const wasRemote = lastRemoteAppliedRef.current === latestDataRef.current;
-          if (wasRemote) lastRemoteAppliedRef.current = null;
-          if (!wasRemote && !initSyncPendingRef.current) {
-            notifyLocalMutation();
-          }
         }
       }, 500);
     }
@@ -308,50 +234,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    return setupOnlineListener();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      cleanupSync();
-    };
-  }, []);
-
-  useEffect(() => {
-    return onSyncStateChange((s) => {
-      setDeadLetterOps(s.deadLetterCount ?? 0);
-      if (s.storageFailure) {
-        setStorageFailure(true);
-      } else if (s.status === 'idle' && s.lastSyncAt) {
-        setStorageFailure(false);
-      }
-      if (s.lastPullAt && s.lastPullAt !== lastPullAtRef.current) {
-        lastPullAtRef.current = s.lastPullAt;
-        if (!initSyncPendingRef.current) {
-          if (syncToastHideTimerRef.current) {
-            window.clearTimeout(syncToastHideTimerRef.current);
-            syncToastHideTimerRef.current = null;
-          }
-          setSyncToastKind('success');
-          setSyncToastVisible(true);
-          syncToastHideTimerRef.current = window.setTimeout(() => {
-            syncToastHideTimerRef.current = null;
-            setSyncToastKind(null);
-            setSyncToastVisible(false);
-          }, 3000);
-        }
-      }
-    });
-  }, [t]);
-
-  useEffect(() => {
-    if (!initialSyncPending && syncToastKind === 'syncing') {
-      setSyncToastKind(null);
-      setSyncToastVisible(false);
-    }
-  }, [initialSyncPending, syncToastKind]);
-
-  useEffect(() => {
     if (data && activeBoardId && data.settings.lastBoardId !== activeBoardId) {
       setData((prev) => (prev ? updateSettings(prev, { lastBoardId: activeBoardId }) : prev));
     }
@@ -408,13 +290,11 @@ export function App() {
   useEffect(() => {
     const unsub = useThemeStore.subscribe((state, prev) => {
       if (state.themeConfig === prev.themeConfig) return;
-      if (initSyncPendingRef.current) return;
       if (themeHydratingRef.current) return;
       setData((prevData) => {
         if (!prevData) return prevData;
         const themeConfig = getThemeConfigForPersist();
         if (JSON.stringify(prevData.settings.themeConfig) === JSON.stringify(themeConfig)) return prevData;
-        safeRecordOperation('themeConfig', 'themeConfig', 'patch', themeConfig);
         return updateSettings(prevData, { themeConfig });
       });
     });
@@ -485,7 +365,6 @@ export function App() {
     if (!next.some((w) => w.type === 'search')) {
       next.push({ type: 'search', searchEngine: engine });
     }
-    safeRecordOperation('topWidgets', 'topWidgets', 'patch', next);
     handleSettingsChange({ topWidgets: next });
   };
 
@@ -514,7 +393,6 @@ export function App() {
     setData((prev) => {
       if (!prev) return prev;
       const next = addBoard(prev, board);
-      safeRecordOperation('board', board.id, 'put', board);
       return next;
     });
     setActiveBoardId(board.id);
@@ -525,7 +403,6 @@ export function App() {
     setData((prev) => {
       if (!prev) return prev;
       const next = renameBoard(prev, id, title);
-      safeRecordOperation('board', id, 'patch', { title: title.trim() });
       return next;
     });
   };
@@ -534,7 +411,6 @@ export function App() {
     setData((prev) => {
       if (!prev) return prev;
       const next = reorderBoard(prev, id, toIndex);
-      safeRecordOperation('board', id, 'move', { toIndex });
       return next;
     });
   };
@@ -549,7 +425,6 @@ export function App() {
         setData((prev) => {
           if (!prev) return prev;
           const next = deleteBoard(prev, id);
-          safeRecordOperation('board', id, 'delete', null);
           setActiveBoardId(getInitialBoardId(next));
           return next;
         });
@@ -562,10 +437,7 @@ export function App() {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const next = addWidget(prev, activeBoardId, widget);
-      const inserted = next.workspaces.find((w) => w.id === activeBoardId)?.widgets.find((widgetItem) => widgetItem.id === widget.id);
-      if (inserted) safeRecordOperation('widget', `${activeBoardId}/${widget.id}`, 'put', inserted);
-      return next;
+      return addWidget(prev, activeBoardId, widget);
     });
     setIsAddingWidget(false);
   };
@@ -578,16 +450,7 @@ export function App() {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const next = updateWidget(prev, activeBoardId, widget.id, widget as Partial<Widget>);
-      const payload: Record<string, unknown> = {};
-      if (widget.title !== undefined) payload.title = widget.title;
-      if (widget.colSpan !== undefined) payload.colSpan = widget.colSpan;
-      if (widget.height !== undefined) payload.height = widget.height;
-      if (widget.type === 'weather' && widget.city !== undefined) payload.city = widget.city;
-      if (Object.keys(payload).length > 0) {
-        safeRecordOperation('widget', `${activeBoardId}/${widget.id}`, 'patch', payload);
-      }
-      return next;
+      return updateWidget(prev, activeBoardId, widget.id, widget as Partial<Widget>);
     });
     setEditingWidget(null);
   };
@@ -603,7 +466,6 @@ export function App() {
           setData((prev) => {
             if (!prev || !activeBoardId) return prev;
             const next = deleteWidget(prev, activeBoardId, widgetId);
-            safeRecordOperation('widget', `${activeBoardId}/${widgetId}`, 'delete', null);
             return next;
           });
         }
@@ -618,14 +480,6 @@ export function App() {
       if (!prev || !activeBoardId) return prev;
       const board = getBoardById(prev, activeBoardId);
       if (!board) return prev;
-      for (let i = 0; i < nextWidgets.length; i++) {
-        const w = nextWidgets[i];
-        safeRecordOperation('widget', `${activeBoardId}/${w.id}`, 'move', {
-          toIndex: i,
-          col: w.col,
-          layoutColumns: w.layoutColumns,
-        });
-      }
       return {
         ...prev,
         workspaces: prev.workspaces.map((w) =>
@@ -642,7 +496,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = updateWidget(prev, activeBoardId, widgetId, { height });
-      safeRecordOperation('widget', `${activeBoardId}/${widgetId}`, 'patch', { height });
       return next;
     });
   };
@@ -652,7 +505,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = moveLink(prev, activeBoardId, fromWidgetId, toWidgetId, linkId, toIndex);
-      safeRecordOperation('link', `${activeBoardId}/${fromWidgetId}/${linkId}`, 'move', { toWidgetId, toIndex });
       return next;
     });
   };
@@ -662,7 +514,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = deleteLink(prev, activeBoardId, widgetId, linkId);
-      safeRecordOperation('link', `${activeBoardId}/${widgetId}/${linkId}`, 'delete', null);
       return next;
     });
   };
@@ -673,7 +524,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = addLink(prev, activeBoardId, widgetId, link);
-      safeRecordOperation('link', `${activeBoardId}/${widgetId}/${link.id}`, 'put', link);
       return next;
     });
     setAddingLinkWidget(null);
@@ -687,17 +537,11 @@ export function App() {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const payload: Record<string, unknown> = {};
-      if (title !== undefined) payload.title = title.trim() || t('defaults.newLink');
-      if (url !== undefined) payload.url = url;
-      if (icon !== undefined) payload.icon = icon || undefined;
-      const next = updateLink(prev, activeBoardId, widgetId, linkId, {
+      return updateLink(prev, activeBoardId, widgetId, linkId, {
         title: title.trim() || t('defaults.newLink'),
         url,
         icon: icon || undefined
       });
-      safeRecordOperation('link', `${activeBoardId}/${widgetId}/${linkId}`, 'patch', payload);
-      return next;
     });
     setEditingLink(null);
   };
@@ -708,7 +552,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = addTodoItem(prev, activeBoardId, widgetId, todo);
-      safeRecordOperation('todo', `${activeBoardId}/${widgetId}/${todo.id}`, 'put', todo);
       return next;
     });
   };
@@ -717,12 +560,7 @@ export function App() {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const next = toggleTodoItem(prev, activeBoardId, widgetId, todoId);
-      const workspace = next.workspaces.find(w => w.id === activeBoardId);
-      const widget = workspace?.widgets.find(w => w.id === widgetId);
-      const todoItem = widget && widget.type === 'todo' ? widget.items.find(t => t.id === todoId) : undefined;
-      safeRecordOperation('todo', `${activeBoardId}/${widgetId}/${todoId}`, 'patch', { done: todoItem?.done });
-      return next;
+      return toggleTodoItem(prev, activeBoardId, widgetId, todoId);
     });
   };
 
@@ -731,7 +569,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = updateTodoItem(prev, activeBoardId, widgetId, todoId, { text: text.trim() });
-      safeRecordOperation('todo', `${activeBoardId}/${widgetId}/${todoId}`, 'patch', { text: text.trim() });
       return next;
     });
   };
@@ -741,7 +578,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = deleteTodoItem(prev, activeBoardId, widgetId, todoId);
-      safeRecordOperation('todo', `${activeBoardId}/${widgetId}/${todoId}`, 'delete', null);
       return next;
     });
   };
@@ -751,7 +587,6 @@ export function App() {
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = moveTodoItem(prev, activeBoardId, fromWidgetId, toWidgetId, todoId, toIndex);
-      safeRecordOperation('todo', `${activeBoardId}/${fromWidgetId}/${todoId}`, 'move', { toWidgetId, toIndex });
       return next;
     });
   };
@@ -768,25 +603,7 @@ export function App() {
   }, [editingLink, data, activeBoardId]);
 
   const handleSettingsChange = (settings: Partial<AppData['settings']>) => {
-    setData((prev) => {
-      if (!prev) return prev;
-      const next = updateSettings(prev, settings);
-      const { topWidgets, themeConfig, ...other } = settings;
-      if (topWidgets !== undefined) {
-        safeRecordOperation('topWidgets', 'topWidgets', 'patch', topWidgets);
-      }
-      if (themeConfig !== undefined) {
-        safeRecordOperation('themeConfig', 'themeConfig', 'patch', themeConfig);
-      }
-      const restSettings: Record<string, unknown> = { ...other as Record<string, unknown> };
-      for (const key of LOCAL_ONLY_SETTINGS_KEYS) {
-        delete restSettings[key];
-      }
-      if (Object.keys(restSettings).length > 0) {
-        safeRecordOperation('settings', 'settings', 'patch', restSettings);
-      }
-      return next;
-    });
+    setData((prev) => (prev ? updateSettings(prev, settings) : prev));
   };
 
   const handleToggleWidget = (type: WidgetType) => {
@@ -795,13 +612,11 @@ export function App() {
     
     if (exists) {
       const next = currentTopWidgets.filter((w) => w.type !== type);
-      safeRecordOperation('topWidgets', 'topWidgets', 'patch', next);
       handleSettingsChange({ topWidgets: next });
     } else {
       const newWidget: TopWidgetConfig = { type: type as any };
       if (type === 'weather') newWidget.city = 'New York';
       const next = [...currentTopWidgets, newWidget];
-      safeRecordOperation('topWidgets', 'topWidgets', 'patch', next);
       handleSettingsChange({ topWidgets: next });
     }
   };
@@ -811,10 +626,7 @@ export function App() {
     const widget = createWidget(type, '');
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const next = addWidget(prev, activeBoardId, widget);
-      const inserted = next.workspaces.find((w) => w.id === activeBoardId)?.widgets.find((widgetItem) => widgetItem.id === widget.id);
-      if (inserted) safeRecordOperation('widget', `${activeBoardId}/${widget.id}`, 'put', inserted);
-      return next;
+      return addWidget(prev, activeBoardId, widget);
     });
   };
 
@@ -824,7 +636,6 @@ export function App() {
       const next = (prev.settings.topWidgets || []).map((w) =>
         w.type === 'weather' ? { ...w, city } : w
       );
-      safeRecordOperation('topWidgets', 'topWidgets', 'patch', next);
       return updateSettings(prev, { topWidgets: next });
     });
   };
@@ -848,27 +659,10 @@ export function App() {
           }
         : imported.data;
       const migrated = migrateAppData(nextData);
-      const importedWorkspaces = migrated.workspaces.map(({ deletedAt: _, ...workspace }) => workspace);
+      const importedWorkspaces = migrated.workspaces;
       const importedData = data
         ? { ...migrated, workspaces: mergeWorkspaces(data.workspaces, importedWorkspaces) }
         : { ...migrated, workspaces: importedWorkspaces };
-      for (const workspace of importedWorkspaces) {
-        safeRecordOperation('board', workspace.id, 'put', workspace);
-      }
-      if (migrated.settings.themeConfig) {
-        safeRecordOperation('themeConfig', 'themeConfig', 'patch', migrated.settings.themeConfig);
-      }
-      if (migrated.settings.topWidgets) {
-        safeRecordOperation('topWidgets', 'topWidgets', 'patch', migrated.settings.topWidgets);
-      }
-      const restSettings: Record<string, unknown> = {};
-      for (const key of Object.keys(migrated.settings)) {
-        if (key === 'themeConfig' || key === 'topWidgets' || (LOCAL_ONLY_SETTINGS_KEYS as string[]).includes(key)) continue;
-        restSettings[key] = (migrated.settings as unknown as Record<string, unknown>)[key];
-      }
-      if (Object.keys(restSettings).length > 0) {
-        safeRecordOperation('settings', 'settings', 'patch', restSettings);
-      }
       setData(importedData);
       saveData(importedData);
       setActiveBoardId(getInitialBoardId(importedData));
@@ -908,10 +702,7 @@ export function App() {
       const widget = { ...createWidget('links', folder.title), items };
       setData((prev) => {
         if (!prev || !activeBoardId) return prev;
-        const next = addWidget(prev, activeBoardId, widget);
-        const inserted = next.workspaces.find((w) => w.id === activeBoardId)?.widgets.find((widgetItem) => widgetItem.id === widget.id);
-        if (inserted) safeRecordOperation('widget', `${activeBoardId}/${widget.id}`, 'put', inserted);
-        return next;
+        return addWidget(prev, activeBoardId, widget);
       });
       setShowBookmarkFolders(false);
     } catch {
@@ -973,23 +764,6 @@ export function App() {
             : data.settings.wallpaper.value
       }}
     >
-      {syncToastVisible && syncToastKind && (
-        <div
-          className={`app-sync-toast${syncToastKind === 'success' ? ' app-sync-toast--success' : ''}`}
-          role="status"
-          aria-live="polite"
-        >
-          {syncToastKind === 'syncing' ? (
-            <span className="app-sync-toast__spinner" aria-hidden="true" />
-          ) : (
-            <span className="app-sync-toast__icon" aria-hidden="true">
-              <Check size={16} strokeWidth={3} />
-            </span>
-          )}
-          <span>{t(syncToastKind === 'syncing' ? 'app.syncing' : 'app.syncSuccess')}</span>
-        </div>
-      )}
-
       {storageFailure && (
         <div className="app-storage-warning" role="alert">
           <span>{t('app.storageFailure')}</span>
@@ -1050,19 +824,6 @@ export function App() {
         </button>
 
         <div className={`app-fab-menu ${menuOpen ? 'app-fab-menu--open' : ''}`}>
-          {deadLetterOps > 0 && (
-            <button
-              className="app-fab-menu__item app-fab-menu__item--retry"
-              onClick={() => {
-                void retryDeadLetters().catch(() => setStorageFailure(true));
-                setMenuOpen(false);
-              }}
-              aria-label={t('app.retryDeadLetters')}
-              title={t('app.retryDeadLetters')}
-            >
-              {t('app.retryDeadLetters')} ({deadLetterOps})
-            </button>
-          )}
           <button
             className="app-fab-menu__item"
             onClick={() => { setShowWidgetToolbar(true); setMenuOpen(false); }}
@@ -1078,14 +839,6 @@ export function App() {
             title={t('app.customizeAppearance')}
           >
             <Palette size={20} strokeWidth={2} />
-          </button>
-          <button
-            className="app-fab-menu__item"
-            onClick={() => { setShowAccount(true); setMenuOpen(false); }}
-            aria-label={t('app.openAccount')}
-            title={t('app.account')}
-          >
-            <User size={20} strokeWidth={2} aria-hidden="true" />
           </button>
           <button
             className="app-fab-menu__item"
@@ -1181,15 +934,6 @@ export function App() {
           onImportBookmarks={handleOpenBookmarkImporter}
           onClearRecentSearches={handleClearRecentSearches}
         />
-      </ModalDialog>
-
-      <ModalDialog
-        open={showAccount}
-        onClose={() => setShowAccount(false)}
-        title={t('auth.title')}
-        wide
-      >
-        <AuthPanel onAuthenticated={() => setShowAccount(false)} />
       </ModalDialog>
 
       <ModalDialog

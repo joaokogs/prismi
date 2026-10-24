@@ -53,16 +53,3 @@ export async function openUrlDirect(url: string, openInNewTab: boolean): Promise
 export async function openUrl(url: string, openInNewTab = true): Promise<void> {
   await openUrlDirect(url, openInNewTab);
 }
-
-const STRIPE_HOSTS = ['checkout.stripe.com', 'billing.stripe.com', 'stripe.com'];
-
-export function isValidStripeUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    const hostname = parsed.hostname.toLowerCase();
-    return STRIPE_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
-  } catch {
-    return false;
-  }
-}

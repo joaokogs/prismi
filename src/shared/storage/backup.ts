@@ -2,7 +2,7 @@ import type { AppData, Board, ThemeConfig, TopWidgetConfig, Widget } from '@shar
 import { t } from '@shared/i18n';
 import { DEFAULT_THEME } from '@shared/types/constants';
 import { generateId, generateWorkspaceId, getDefaultData } from '@shared/types/defaults';
-import { migrateAppData } from '@shared/sync/migrate';
+import { migrateAppData } from './migrate';
 import { getBoards } from './index';
 
 export interface TemplateWidgetPosition {

@@ -123,10 +123,3 @@ export interface AppData {
   settings: AppSettings;
   installedAt: number;
 }
-
-export interface SyncMeta {
-  owner?: string;
-  lastSyncAt?: number;
-  settingsUpdatedAt?: number;
-  workspaceRevisions: Record<string, number>;
-}

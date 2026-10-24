@@ -1,12 +1,11 @@
 import { browser } from '@shared/browser';
 import { getDefaultData } from '@shared/types/defaults';
-import type { AppData, Board, SyncMeta, Workspace } from '@shared/types';
+import type { AppData, Board, Workspace } from '@shared/types';
 import type { Widget } from '@shared/types';
-import { migrateAppData } from '@shared/sync/migrate';
+import { migrateAppData } from './migrate';
 
 export const STORAGE_KEY = 'prismiWorkspaces';
 export const LEGACY_STORAGE_KEY = 'boardsNewTabData';
-export const SYNC_META_KEY = 'prismiSyncMeta';
 
 export type WriteResult =
   | { ok: true }
@@ -109,35 +108,6 @@ export async function ensureData(): Promise<AppData> {
   const data = await loadData();
   await saveData(data);
   return data;
-}
-
-export async function loadSyncMeta(): Promise<SyncMeta> {
-  try {
-    const result = await browser.storage.local.get(SYNC_META_KEY);
-    const saved = result[SYNC_META_KEY] as SyncMeta | undefined;
-    if (saved && typeof saved === 'object') {
-      return {
-        ...saved,
-        workspaceRevisions: saved.workspaceRevisions ?? {},
-      };
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('Failed to load sync meta:', message);
-  }
-  return { workspaceRevisions: {} };
-}
-
-export async function saveSyncMeta(meta: SyncMeta): Promise<WriteResult> {
-  try {
-    await browser.storage.local.set({ [SYNC_META_KEY]: meta });
-    return { ok: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('Failed to save sync meta:', message);
-    notifyStorageFailure(`write meta: ${message}`);
-    return { ok: false, error: message };
-  }
 }
 
 export function updateWorkspace(data: AppData, workspaceId: string, fn: (workspace: Workspace) => Workspace): AppData {

@@ -45,39 +45,31 @@ export function reorderBoard(data: AppData, boardId: string, toIndex: number): A
   reordered.splice(clamped, 0, moved);
 
   const orderMap = new Map(reordered.map((b, i) => [b.id, i]));
-  const deletedWorkspaces = data.workspaces.filter((w) => w.deletedAt);
-  const visibleWorkspaces = data.workspaces.filter((w) => !w.deletedAt);
   const now = Date.now();
-  visibleWorkspaces.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-
-  const orderedWorkspaces = [...visibleWorkspaces].sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+  const orderedWorkspaces = [...data.workspaces].sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
   return {
     ...data,
-    workspaces: [...orderedWorkspaces, ...deletedWorkspaces].map((w, index) => ({
+    workspaces: orderedWorkspaces.map((w, index) => ({
       ...w,
-      updatedAt: w.deletedAt ? w.updatedAt : now,
+      updatedAt: now,
       position: index,
-    } as Workspace)),
+    })),
   };
 }
 
 export function deleteBoard(data: AppData, boardId: string): AppData {
-  const now = Date.now();
-  const next = updateWorkspace(data, boardId, (workspace) => ({
-    ...workspace,
-    deletedAt: now,
-    updatedAt: now,
-  }));
-  const visible = getBoards(next);
+  const workspaces = data.workspaces
+    .filter((workspace) => workspace.id !== boardId)
+    .map((workspace, position) => ({ ...workspace, position }));
   return {
-    ...next,
+    ...data,
+    workspaces,
     settings: {
-      ...next.settings,
-      lastBoardId: visible[0]?.id
-    }
+      ...data.settings,
+      lastBoardId: workspaces.find((workspace) => !workspace.deletedAt)?.id,
+    },
   };
 }
-
 export function getBoardById(data: AppData, boardId: string): Board | undefined {
   const workspace = getWorkspaceById(data, boardId);
   if (!workspace || workspace.deletedAt) return undefined;

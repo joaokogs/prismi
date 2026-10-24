@@ -1,14 +1,4 @@
-import type { ThemeConfig, WallpaperSetting, SearchEngine, AppSettings } from './index';
-
-export const LOCAL_ONLY_SETTINGS_KEYS: (keyof AppSettings)[] = [
-  'wallpaper',
-  'uploadedBackgrounds',
-  'lastBoardId',
-  'openInNewTab',
-  'recentSearches',
-  'editMode',
-  'locale',
-];
+import type { ThemeConfig, WallpaperSetting, SearchEngine } from './index';
 
 export const DEFAULT_THEME: ThemeConfig = {
   primaryColor: '#4a90e2',

@@ -1,16 +1,14 @@
 # Política de Privacidade — Prismi Dashboard
 
-Última atualização: 23 de julho de 2026
+Última atualização: 24 de outubro de 2026
 
 Esta política descreve como o Prismi Dashboard coleta, usa e compartilha informações dos usuários.
 
 ## Armazenamento de dados
 
-O Prismi Dashboard não usa dados para rastreamento ou publicidade. A sincronização em nuvem é opcional e só ocorre quando o usuário autentica uma conta com acesso à sincronização.
+O Prismi Dashboard não usa dados para rastreamento ou publicidade e funciona de forma totalmente local e offline.
 
-Sem uma conta autenticada, todos os dados criados pelo usuário (workspaces, widgets, links, notas, configurações de tema e wallpapers) são armazenados no armazenamento local do navegador (`browser.storage.local`).
-
-Quando a sincronização é ativada, os workspaces e as preferências sincronizáveis são enviados ao Supabase para ficarem disponíveis nos dispositivos do mesmo usuário. Wallpapers enviados e outras configurações locais permanecem no dispositivo.
+Todos os dados criados pelo usuário (workspaces, widgets, links, notas, configurações de tema e wallpapers) são armazenados exclusivamente no armazenamento local do navegador (`browser.storage.local`) e nunca são enviados para servidores do Prismi.
 
 ## APIs de terceiros utilizadas
 
@@ -23,7 +21,6 @@ A extensão faz requisições de rede às seguintes APIs exclusivamente para fun
 | **Open-Meteo Geocoding** (`geocoding-api.open-meteo.com`) | Nome da cidade digitado pelo usuário | Converter nome de cidade em coordenadas |
 | **BigDataCloud** (`api.bigdatacloud.net`) | Coordenadas geográficas (latitude/longitude) | Converter coordenadas em nome de cidade |
 | **Mecanismo de busca escolhido** (Google, Yahoo, Bing ou DuckDuckGo) | Consulta de busca digitada pelo usuário | Sugestões de autocomplete na barra de pesquisa |
-| **Supabase** | Workspaces e preferências sincronizáveis, somente após login | Sincronizar os dados entre dispositivos do mesmo usuário |
 
 ### Geolocalização
 
@@ -31,7 +28,7 @@ O widget de clima **pode** solicitar acesso à localização do dispositivo (via
 
 ## Dados coletados pela extensão
 
-A extensão **não coleta, armazena ou transmite** dados de navegação, histórico ou cookies. Os dados de workspaces só são enviados ao Supabase quando o usuário opta por autenticar e ativar a sincronização.
+A extensão **não coleta, armazena ou transmite** dados de navegação, histórico, cookies ou os dados salvos pelo usuário. Tudo permanece no dispositivo do usuário.
 
 ## Compartilhamento com terceiros
 

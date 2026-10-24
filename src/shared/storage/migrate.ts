@@ -6,11 +6,11 @@ export function migrateAppData(data: AppData, fallbackTimestamp?: number): AppDa
   const fallback = fallbackTimestamp ?? data.installedAt ?? now - 86400000;
 
   const legacyBoards = (data as unknown as { boards?: Board[] }).boards;
-  const sourceWorkspaces: Workspace[] = Array.isArray(data.workspaces)
+  const sourceWorkspaces: Workspace[] = (Array.isArray(data.workspaces)
     ? data.workspaces
     : Array.isArray(legacyBoards)
       ? legacyBoards
-      : [];
+      : []).filter((workspace) => !(workspace as Workspace).deletedAt);
 
   const base: AppData = {
     ...data,
