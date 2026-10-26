@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Read version
+        id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the tag already exists
+        id: tag
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify injected version
+        run: |
+          manifest_version=$(node -p "require('./dist/manifest.json').version")
+          if [ "$manifest_version" != "${{ steps.version.outputs.value }}" ]; then
+            echo "::error::dist/manifest.json has version $manifest_version but package.json has ${{ steps.version.outputs.value }}"
+            exit 1
+          fi
+
+      - name: Lint Firefox package
+        run: npx --yes web-ext@10.8.0 lint --source-dir dist
+
+      - name: Package artifacts
+        run: |
+          version="${{ steps.version.outputs.value }}"
+          mkdir -p out
+
+          npx --yes web-ext@10.8.0 build \
+            --source-dir dist \
+            --artifacts-dir out \
+            --overwrite-dest \
+            --filename "prismi-${version}-firefox.zip"
+
+          (cd dist && zip -qr "../out/prismi-${version}-chrome.zip" .)
+
+          # Tracked files only: no node_modules, dist, dist-chrome or release.
+          git archive --format=zip -o "out/prismi-${version}-sources.zip" HEAD
+
+          ls -lh out
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: prismi-${{ steps.version.outputs.value }}
+          path: out/*.zip
+          if-no-files-found: error
+
+      - name: Generate release notes
+        if: steps.tag.outputs.exists == 'false'
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_MODEL: deepseek-v4.1-flash
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$previous" ]; then
+            range="$previous..HEAD"
+          else
+            range="HEAD"
+          fi
+
+          git log "$range" --no-merges --max-count=60 --pretty='- %s (`%h`)' > commits.txt
+
+          jq -n \
+            --rawfile commits commits.txt \
+            --arg version "${{ steps.version.outputs.value }}" \
+            --arg model "$OPENCODE_MODEL" \
+            '{
+              model: $model,
+              temperature: 0.3,
+              max_tokens: 900,
+              messages: [
+                {
+                  role: "system",
+                  content: "Você escreve notas de release em português do Brasil para uma extensão de navegador. Use SOMENTE os commits fornecidos e não invente funcionalidades. Agrupe em seções curtas: Novidades, Correções, Melhorias internas. No máximo 12 bullets, frases curtas voltadas ao usuário. Responda apenas markdown, sem cercas de código e sem repetir a lista de commits."
+                },
+                {
+                  role: "user",
+                  content: ("Versão " + $version + ". Commits:\n" + $commits)
+                }
+              ]
+            }' > payload.json
+
+          generated=0
+          for prefix in "" "/go"; do
+            url="https://opencode.ai/inference${prefix}/openai/v1/chat/completions"
+            if curl -sS --fail --max-time 120 -X POST "$url" \
+                 -H "Authorization: Bearer $OPENCODE_API_KEY" \
+                 -H "Content-Type: application/json" \
+                 -d @payload.json > response.json \
+               && jq -e '.choices[0].message.content | type == "string" and length > 0' response.json >/dev/null; then
+              generated=1
+              echo "Notas geradas via $url"
+              break
+            fi
+            echo "::notice::Falha ao chamar $url; tentando o próximo endpoint"
+          done
+
+          if [ "$generated" = "1" ]; then
+            {
+              jq -r '.choices[0].message.content' response.json
+              echo
+              echo "### Commits"
+              echo
+              cat commits.txt
+            } > notes.md
+          else
+            echo "::warning::Não foi possível gerar as notas com o modelo; usando a lista de commits."
+            {
+              echo "## Mudanças"
+              echo
+              cat commits.txt
+            } > notes.md
+          fi
+
+          cat notes.md
+
+      - name: Create tag and GitHub Release
+        if: steps.tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.value }}" out/*.zip \
+            --title "v${{ steps.version.outputs.value }}" \
+            --notes-file notes.md \
+            --target "${{ github.sha }}"
