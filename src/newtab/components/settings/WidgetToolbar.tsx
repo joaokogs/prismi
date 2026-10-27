@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'preact/hooks';
-import { CalendarDays, Clock3, Cloud, Search, CheckSquare, type LucideIcon } from 'lucide-preact';
+import { CalendarDays, Clock3, Cloud, Search, CheckSquare, Plus, type LucideIcon } from 'lucide-preact';
 import type { WidgetType, TopWidgetConfig } from '@shared/types';
 import { CityAutocomplete } from '../ui/CityAutocomplete';
 import { useI18n } from '@shared/i18n';
 import {
   uiButtonSecondaryClass,
+  uiButtonSecondarySmallClass,
   uiSwitchInputClass,
   uiSwitchLabelClass,
   uiSwitchTrackClass
@@ -14,9 +15,6 @@ interface WidgetOption {
   type: WidgetType | 'search';
   label: string;
   icon: LucideIcon;
-  hasToggle?: boolean;
-  hasAdd?: boolean;
-  hasCity?: boolean;
 }
 
 interface WidgetToolbarProps {
@@ -25,6 +23,10 @@ interface WidgetToolbarProps {
   onAddWidget: (type: WidgetType) => void;
   onCityChange: (city: string) => void;
 }
+
+const rowClass = 'flex items-center justify-between gap-4 py-3';
+const rowInfoClass = 'flex min-w-0 items-center gap-3 text-sm font-medium text-panel-text';
+const sectionTitleClass = 'mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-panel-text-muted';
 
 export function WidgetToolbar({
   topWidgets,
@@ -35,16 +37,16 @@ export function WidgetToolbar({
   const { t } = useI18n();
 
   const BLOCK_WIDGETS: WidgetOption[] = [
-    { type: 'calendar', label: t('widgetToolbar.calendar'), icon: CalendarDays, hasAdd: true },
-    { type: 'clock', label: t('widgetToolbar.clock'), icon: Clock3, hasAdd: true },
-    { type: 'weather', label: t('widgetToolbar.weather'), icon: Cloud, hasAdd: true },
-    { type: 'todo', label: t('widgetToolbar.todo'), icon: CheckSquare, hasAdd: true },
+    { type: 'calendar', label: t('widgetToolbar.calendar'), icon: CalendarDays },
+    { type: 'clock', label: t('widgetToolbar.clock'), icon: Clock3 },
+    { type: 'weather', label: t('widgetToolbar.weather'), icon: Cloud },
+    { type: 'todo', label: t('widgetToolbar.todo'), icon: CheckSquare },
   ];
 
   const HEADER_WIDGETS: WidgetOption[] = [
-    { type: 'clock', label: t('widgetToolbar.clock'), icon: Clock3, hasToggle: true },
-    { type: 'search', label: t('widgetToolbar.search'), icon: Search, hasToggle: true },
-    { type: 'weather', label: t('widgetToolbar.weather'), icon: Cloud, hasToggle: true, hasCity: true }
+    { type: 'clock', label: t('widgetToolbar.clock'), icon: Clock3 },
+    { type: 'search', label: t('widgetToolbar.search'), icon: Search },
+    { type: 'weather', label: t('widgetToolbar.weather'), icon: Cloud }
   ];
 
   const [cityInput, setCityInput] = useState('');
@@ -60,8 +62,6 @@ export function WidgetToolbar({
     return topWidgets.some((w) => w.type === type);
   };
 
-  const filterOptions = (options: WidgetOption[]) => options;
-
   const handleApplyCity = () => {
     if (cityInput.trim()) {
       onCityChange(cityInput.trim());
@@ -69,103 +69,87 @@ export function WidgetToolbar({
   };
 
   return (
-    <div className="dialog__body">
-      <div className="widget-toolbar__group">
-        <h4 className="dialog__section-title">{t('widgetToolbar.blocks')}</h4>
-        <div className="widget-toolbar__list">
-          {filterOptions(BLOCK_WIDGETS).map((option) => {
-          const WidgetIcon = option.icon;
-          const isActive = isWidgetActive(option.type as WidgetType);
+    <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-2 sm:px-6 sm:pb-6">
+      <section>
+        <h3 className={sectionTitleClass}>{t('widgetToolbar.blocks')}</h3>
+        <div className="divide-y divide-panel-border-subtle">
+          {BLOCK_WIDGETS.map((option) => {
+            const WidgetIcon = option.icon;
 
-          return (
-            <div key={option.type} className="widget-toolbar__item">
-              <div className="widget-toolbar__item-info">
-                <WidgetIcon size={18} strokeWidth={2} />
-                <span>{option.label}</span>
-              </div>
-
-              {option.hasAdd && (
+            return (
+              <div key={option.type} className={rowClass}>
+                <div className={rowInfoClass}>
+                  <WidgetIcon size={16} strokeWidth={2} className="shrink-0 text-panel-text-muted" aria-hidden="true" />
+                  <span className="truncate">{option.label}</span>
+                </div>
                 <button
-                  className={`${uiButtonSecondaryClass} min-h-8 px-4 py-1.5 text-xs`}
+                  type="button"
+                  className={`${uiButtonSecondarySmallClass} shrink-0`}
                   onClick={() => onAddWidget(option.type as WidgetType)}
                 >
+                  <Plus size={14} strokeWidth={2} aria-hidden="true" />
                   {t('widgetToolbar.add')}
                 </button>
-              )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-              {option.hasToggle && (
+      <section className="mt-4 border-t border-panel-border-subtle pt-4">
+        <h3 className={sectionTitleClass}>{t('widgetToolbar.header')}</h3>
+        <div className="divide-y divide-panel-border-subtle">
+          {HEADER_WIDGETS.map((option) => {
+            const WidgetIcon = option.icon;
+
+            return (
+              <div key={option.type} className={rowClass}>
+                <div className={rowInfoClass}>
+                  <WidgetIcon size={16} strokeWidth={2} className="shrink-0 text-panel-text-muted" aria-hidden="true" />
+                  <span className="truncate">{option.label}</span>
+                </div>
                 <label className={uiSwitchLabelClass}>
                   <input
                     className={uiSwitchInputClass}
                     type="checkbox"
-                    checked={isActive}
+                    aria-label={option.label}
+                    checked={isWidgetActive(option.type as WidgetType)}
                     onChange={() => onToggleWidget(option.type as WidgetType)}
                   />
                   <span className={uiSwitchTrackClass} />
                 </label>
-              )}
-            </div>
-          );
-        })}
-        </div>
-      </div>
-
-      <div className="widget-toolbar__group">
-        <h4 className="dialog__section-title">{t('widgetToolbar.header')}</h4>
-        <div className="widget-toolbar__list">
-          {filterOptions(HEADER_WIDGETS).map((option) => {
-          const WidgetIcon = option.icon;
-          const isActive = isWidgetActive(option.type as WidgetType);
-
-          return (
-            <div key={option.type} className="widget-toolbar__item">
-              <div className="widget-toolbar__item-info">
-                <WidgetIcon size={18} strokeWidth={2} />
-                <span>{option.label}</span>
               </div>
-
-              {option.hasAdd && (
-                <button
-                  className="widget-toolbar__add-btn"
-                  onClick={() => onAddWidget(option.type as WidgetType)}
-                >
-                  {t('widgetToolbar.add')}
-                </button>
-              )}
-
-              {option.hasToggle && (
-                <label className={uiSwitchLabelClass}>
-                  <input
-                    className={uiSwitchInputClass}
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={() => onToggleWidget(option.type as WidgetType)}
-                  />
-                  <span className={uiSwitchTrackClass} />
-                </label>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
 
-          {isWidgetActive('weather') && (
-            <div className="widget-toolbar__city">
+        {isWidgetActive('weather') && (
+          <div className="mt-3 rounded-md bg-panel-surface-muted p-3">
+            <label
+              className="mb-1.5 block text-xs font-semibold text-panel-text-secondary"
+              htmlFor="widget-toolbar-city"
+            >
+              {t('widgetToolbar.city')}
+            </label>
+            <div className="flex items-center gap-2">
               <CityAutocomplete
+                className="flex-1"
                 value={cityInput}
                 onChange={setCityInput}
                 placeholder={t('widgetToolbar.city')}
                 id="widget-toolbar-city"
               />
               <button
-                className={`${uiButtonSecondaryClass} min-h-10 shrink-0 px-4 py-2 text-xs`}
+                type="button"
+                className={`${uiButtonSecondaryClass} shrink-0 text-xs`}
                 onClick={handleApplyCity}
               >
                 {t('widgetToolbar.apply')}
               </button>
             </div>
-          )}
-      </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
