@@ -6,11 +6,19 @@ export const uiInputClass = 'min-h-10 w-full rounded-md border border-ui-border 
 
 export const uiSelectClass = `${uiInputClass} cursor-pointer`;
 
-export const uiButtonClass = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-transparent px-3.5 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-accent-text disabled:cursor-not-allowed disabled:opacity-50';
+const uiButtonBaseClass = 'inline-flex items-center justify-center gap-2 rounded-md border border-transparent font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-accent-text disabled:cursor-not-allowed disabled:opacity-50';
+
+const uiButtonSecondaryVariantClass = 'border-ui-border bg-ui-surface-muted text-ui-text-secondary hover:bg-ui-surface-raised hover:text-ui-text';
+
+export const uiButtonClass = `${uiButtonBaseClass} min-h-10 px-3.5 py-2 text-sm`;
+
+export const uiButtonSmallClass = `${uiButtonBaseClass} min-h-8 px-3 py-1 text-xs`;
 
 export const uiButtonPrimaryClass = `${uiButtonClass} bg-ui-accent text-white shadow-[0_4px_12px_rgba(15,23,42,0.16)] hover:bg-ui-accent-hover`;
 
-export const uiButtonSecondaryClass = `${uiButtonClass} border-ui-border bg-ui-surface-muted text-ui-text-secondary hover:bg-ui-surface-raised hover:text-ui-text`;
+export const uiButtonSecondaryClass = `${uiButtonClass} ${uiButtonSecondaryVariantClass}`;
+
+export const uiButtonSecondarySmallClass = `${uiButtonSmallClass} ${uiButtonSecondaryVariantClass}`;
 
 export const uiButtonDangerClass = `${uiButtonClass} border-ui-danger/25 bg-ui-danger/10 text-ui-danger hover:border-ui-danger/40 hover:bg-ui-danger/15 hover:text-ui-danger-hover`;
 
