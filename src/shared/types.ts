@@ -1,5 +1,6 @@
 export type {
   WidgetType,
+  LinkGroup,
   LinkItem,
   BaseWidget,
   LinksWidget,

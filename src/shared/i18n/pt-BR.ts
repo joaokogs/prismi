@@ -100,6 +100,8 @@ export const ptBR: Record<string, string> = {
   'linkDialog.titlePlaceholder': 'Ex: Meu site favorito',
   'linkDialog.url': 'URL',
   'linkDialog.urlPlaceholder': 'https://...',
+  'linkDialog.group': 'Subpasta',
+  'linkDialog.noGroup': 'Sem subpasta',
   'linkDialog.cancel': 'Cancelar',
   'linkDialog.save': 'Salvar',
   'linkDialog.add': 'Adicionar',
@@ -111,6 +113,13 @@ export const ptBR: Record<string, string> = {
   'linksWidget.actions': 'Ações',
   'linksWidget.edit': 'Editar',
   'linksWidget.delete': 'Excluir',
+  'linksWidget.groupActions': 'Ações da subpasta',
+  'linksWidget.renameGroup': 'Renomear subpasta',
+  'linksWidget.deleteGroup': 'Excluir subpasta',
+  'linksWidget.dragGroup': 'Arrastar subpasta {title}',
+  'linksWidget.collapseGroup': 'Recolher {title}',
+  'linksWidget.expandGroup': 'Expandir {title}',
+  'linksWidget.emptyGroup': 'Nenhum link nesta subpasta',
 
   // NewTabDialog
   'newTab.title': 'Nova aba',
@@ -179,6 +188,7 @@ export const ptBR: Record<string, string> = {
   'widgetCard.widgetActions': 'Ações do widget',
   'widgetCard.actions': 'Ações',
   'widgetCard.addLink': 'Adicionar link',
+  'widgetCard.addGroup': 'Nova subpasta',
   'widgetCard.edit': 'Editar',
   'widgetCard.delete': 'Excluir',
   'widgetCard.resize': 'Redimensionar widget',
@@ -288,6 +298,7 @@ export const ptBR: Record<string, string> = {
   // Storage defaults
   'defaults.newBoard': 'Nova aba',
   'defaults.newLink': 'Link sem título',
+  'defaults.newGroup': 'Nova subpasta',
   'defaults.newNote': 'Nova nota',
   'defaults.todoWidget': 'Bloco de Notas',
   'defaults.linksWidget': 'Links',

@@ -1,5 +1,6 @@
-import type { AppData, Board, LinkItem, TodoItem, TopWidgetConfig, Widget, Workspace } from '@shared/types';
+import type { AppData, Board, LinkGroup, LinkItem, LinksWidget, TodoItem, TopWidgetConfig, Widget, Workspace } from '@shared/types';
 import { generateId, generateWorkspaceId } from '@shared/types/defaults';
+import { normalizeTopLevelOrder } from '@shared/utils/linkOrder';
 
 export function migrateAppData(data: AppData, fallbackTimestamp?: number): AppData {
   const now = Date.now();
@@ -111,11 +112,26 @@ function migrateWidget(widget: Widget, fallback: number, usedWidgetIds: Set<stri
 
   if (widget.type === 'links') {
     const itemIds = new Set<string>();
-    return {
+    const rawGroups = (widget as { groups?: unknown }).groups;
+    const groups = normalizeLinkGroups(rawGroups);
+    const groupIds = new Set(groups.map((group) => group.id));
+    const normalized: LinksWidget = {
       ...base,
       type: 'links',
-      items: widget.items.map((item) => migrateItem(item, 'link', fallback, itemIds)),
+      items: widget.items.map((item) => {
+        const migrated = migrateItem(item, 'link', fallback, itemIds);
+        if (migrated.groupId === undefined || groupIds.has(migrated.groupId)) return migrated;
+        const next = { ...migrated };
+        delete next.groupId;
+        return next;
+      }),
     };
+    if (Array.isArray(rawGroups)) {
+      normalized.groups = groups;
+    } else {
+      delete normalized.groups;
+    }
+    return normalizeTopLevelOrder(normalized);
   }
 
   if (widget.type === 'todo') {
@@ -143,6 +159,27 @@ function migrateItem<T extends LinkItem | TodoItem>(
     createdAt: getTimestamp(legacyItem.createdAt, fallback),
     updatedAt: getTimestamp(legacyItem.updatedAt, fallback),
   } as T;
+}
+
+function normalizeLinkGroups(value: unknown): LinkGroup[] {
+  if (!Array.isArray(value)) return [];
+
+  const groups: LinkGroup[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const candidate = entry as { id?: unknown; title?: unknown; order?: unknown };
+    if (typeof candidate.id !== 'string' || !candidate.id.trim()) continue;
+
+    const group: LinkGroup = {
+      id: candidate.id,
+      title: typeof candidate.title === 'string' ? candidate.title : '',
+    };
+    if (typeof candidate.order === 'number' && Number.isFinite(candidate.order)) group.order = candidate.order;
+    if (groups.some((existing) => existing.id === candidate.id)) continue;
+    groups.push(group);
+  }
+
+  return groups;
 }
 
 function getTimestamp(value: unknown, fallback: number): number {

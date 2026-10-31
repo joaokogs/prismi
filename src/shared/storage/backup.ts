@@ -1,7 +1,9 @@
-import type { AppData, Board, ThemeConfig, TopWidgetConfig, Widget } from '@shared/types';
+import type { AppData, Board, LinkGroup, LinkItem, LinksWidget, ThemeConfig, TopWidgetConfig, Widget } from '@shared/types';
 import { t } from '@shared/i18n';
 import { DEFAULT_THEME } from '@shared/types/constants';
 import { generateId, generateWorkspaceId, getDefaultData } from '@shared/types/defaults';
+import { applyTopLevelEntryOrder, getTopLevelEntries, normalizeTopLevelOrder } from '@shared/utils/linkOrder';
+import type { TopLevelEntry } from '@shared/utils/linkOrder';
 import { migrateAppData } from './migrate';
 import { getBoards } from './index';
 
@@ -17,6 +19,20 @@ export interface TemplateTheme {
   boardBlur: number;
 }
 
+/** Posição de uma entrada de topo dentro do template (`items` ou `groups`). */
+export interface TemplateTopLevelEntry {
+  kind: 'link' | 'group';
+  index: number;
+}
+
+interface TemplateLinkItem {
+  title: string;
+  url: string;
+  icon?: string;
+  favicon?: string;
+  groupId?: number;
+}
+
 interface TemplateWidgetBase {
   title: string;
   colSpan: number;
@@ -25,7 +41,14 @@ interface TemplateWidgetBase {
 }
 
 export type TemplateWidget =
-  | (TemplateWidgetBase & { type: 'links'; items: { title: string; url: string; icon?: string }[] })
+  | (TemplateWidgetBase & {
+      type: 'links';
+      /** `groupId` is the index of the group in `groups` (group ids are recreated on import). */
+      items: TemplateLinkItem[];
+      groups?: { title: string }[];
+      /** Ordem efetiva das entradas de topo (links soltos intercalados com subpastas). */
+      topLevel?: TemplateTopLevelEntry[];
+    })
   | (TemplateWidgetBase & { type: 'calendar' })
   | (TemplateWidgetBase & { type: 'clock'; timezone?: string; label?: string })
   | (TemplateWidgetBase & { type: 'weather'; city?: string })
@@ -38,7 +61,7 @@ export interface TemplateBoard {
 
 export interface TemplateData {
   format: 'prismi-template';
-  version: 4;
+  version: 5;
   columns: number;
   headerWidgets?: TopWidgetConfig[];
   theme: TemplateTheme;
@@ -97,12 +120,43 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
   };
 
   switch (widget.type) {
-    case 'links':
+    case 'links': {
+      const groups = (widget.groups ?? [])
+        .map((group, index) => ({ group, index }))
+        .sort((a, b) => (a.group.order ?? a.index) - (b.group.order ?? b.index))
+        .map(({ group }) => group);
+      const groupIndex = new Map(groups.map((group, index) => [group.id, index]));
+      const itemIndex = new Map(widget.items.map((item, index) => [item.id, index]));
+      const topLevel = groups.length > 0
+        ? getTopLevelEntries(widget)
+          .map((entry): TemplateTopLevelEntry => (
+            entry.kind === 'link'
+              ? { kind: 'link', index: itemIndex.get(entry.id) ?? -1 }
+              : { kind: 'group', index: groupIndex.get(entry.id) ?? -1 }
+          ))
+          .filter((entry) => entry.index >= 0)
+        : [];
       return {
         ...base,
         type: 'links',
-        items: widget.items.map(({ title, url, icon }) => ({ title, url, ...(icon ? { icon } : {}) }))
+        items: widget.items.map(({ title, url, icon, favicon, groupId }) => {
+          const index = groupId !== undefined ? groupIndex.get(groupId) : undefined;
+          return {
+            title,
+            url,
+            ...(icon ? { icon } : {}),
+            ...(favicon ? { favicon } : {}),
+            ...(index !== undefined ? { groupId: index } : {}),
+          };
+        }),
+        ...(groups.length > 0
+          ? {
+              groups: groups.map(({ title }) => ({ title })),
+            }
+          : {}),
+        ...(topLevel.length > 0 ? { topLevel } : {}),
       };
+    }
     case 'calendar':
       return { ...base, type: 'calendar' };
     case 'clock':
@@ -128,7 +182,7 @@ export function createTemplate(data: AppData, theme: Pick<ThemeConfig, 'primaryC
   const boards = getBoards(data);
   return {
     format: 'prismi-template',
-    version: 4,
+    version: 5,
     columns,
     headerWidgets: data.settings.topWidgets ?? [],
     theme: {
@@ -168,6 +222,45 @@ function getCurrentColumnCount(): number {
   return 1;
 }
 
+/**
+ * Converte `topLevel` do template em entradas com ids reais, ignorando índices
+ * inválidos e duplicados. Retorna [] quando nada é aproveitado (fallback).
+ */
+function resolveTemplateTopLevel(
+  topLevel: TemplateTopLevelEntry[] | undefined,
+  items: LinkItem[],
+  groups: LinkGroup[]
+): TopLevelEntry[] {
+  if (!topLevel || topLevel.length === 0) return [];
+  const seen = new Set<string>();
+  const entries: TopLevelEntry[] = [];
+
+  for (const entry of topLevel) {
+    if (!entry || (entry.kind !== 'link' && entry.kind !== 'group')) continue;
+    if (typeof entry.index !== 'number' || !Number.isInteger(entry.index) || entry.index < 0) continue;
+
+    if (entry.kind === 'link') {
+      const item = items[entry.index];
+      // Índice inválido ou link que está dentro de subpasta: não é entrada de topo.
+      if (!item || item.groupId) continue;
+      const key = `link:${item.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ kind: 'link', id: item.id, order: entries.length });
+      continue;
+    }
+
+    const group = groups[entry.index];
+    if (!group) continue;
+    const key = `group:${group.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ kind: 'group', id: group.id, order: entries.length });
+  }
+
+  return entries;
+}
+
 function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosition, columns: number): Widget {
   const now = Date.now();
   const base = {
@@ -181,19 +274,36 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
   };
 
   switch (widget.type) {
-    case 'links':
-      return {
-        ...base,
-        type: 'links',
-        items: widget.items.map((item) => ({
+    case 'links': {
+      const groups = (widget.groups ?? []).map((group) => ({
+        id: generateId('group'),
+        title: group.title,
+      }));
+      const items: LinkItem[] = widget.items.map((item) => {
+        const group = item.groupId !== undefined ? groups[item.groupId] : undefined;
+        return {
           id: generateId('link'),
           title: item.title,
           url: item.url,
           createdAt: now,
           updatedAt: now,
-          ...(item.icon ? { icon: item.icon } : {})
-        }))
+          ...(item.icon ? { icon: item.icon } : {}),
+          ...(item.favicon ? { favicon: item.favicon } : {}),
+          ...(group ? { groupId: group.id } : {}),
+        };
+      });
+
+      const linksWidget: LinksWidget = {
+        ...base,
+        type: 'links',
+        ...(groups.length > 0 ? { groups } : {}),
+        items,
       };
+
+      const entries = resolveTemplateTopLevel(widget.topLevel, items, groups);
+      if (entries.length === 0) return normalizeTopLevelOrder(linksWidget);
+      return normalizeTopLevelOrder(applyTopLevelEntryOrder(linksWidget, entries));
+    }
     case 'calendar':
       return { ...base, type: 'calendar' };
     case 'clock':
@@ -290,6 +400,52 @@ function getLegacyColumnCount(boards: unknown[]): number {
   return columns;
 }
 
+/**
+ * Normaliza `topLevel` de um template cru, mapeando índices de origem para os
+ * índices do template normalizado. Ignora itens inválidos/duplicados e links
+ * que pertencem a subpastas.
+ */
+function normalizeTemplateTopLevel(
+  value: unknown,
+  itemIndexMap: Map<number, number>,
+  groupIndexMap: Map<number, number>,
+  items: TemplateLinkItem[]
+): TemplateTopLevelEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const seen = new Set<string>();
+  const entries: TemplateTopLevelEntry[] = [];
+
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const kind = entry.kind;
+    const index = entry.index;
+    if (kind !== 'link' && kind !== 'group') continue;
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) continue;
+
+    if (kind === 'link') {
+      const mapped = itemIndexMap.get(index);
+      if (mapped === undefined) continue;
+      const item = items[mapped];
+      if (!item || item.groupId !== undefined) continue;
+      const key = `link:${mapped}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ kind: 'link', index: mapped });
+      continue;
+    }
+
+    const mapped = groupIndexMap.get(index);
+    if (mapped === undefined) continue;
+    const key = `group:${mapped}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ kind: 'group', index: mapped });
+  }
+
+  return entries.length > 0 ? entries : undefined;
+}
+
 function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget | null {
   if (!isRecord(value)) return null;
 
@@ -304,21 +460,48 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
   };
 
   switch (type) {
-    case 'links':
+    case 'links': {
+      const groups: { title: string }[] = [];
+      const groupIndexMap = new Map<number, number>();
+      if (Array.isArray(value.groups)) {
+        value.groups.forEach((group, groupIndex) => {
+          if (!isRecord(group)) return;
+          groupIndexMap.set(groupIndex, groups.length);
+          groups.push({
+            title: asString(group.title, t('defaults.newGroup')),
+          });
+        });
+      }
+
+      const items: TemplateLinkItem[] = [];
+      const itemIndexMap = new Map<number, number>();
+      if (Array.isArray(value.items)) {
+        value.items.forEach((item, itemIndex) => {
+          if (!isRecord(item) || typeof item.url !== 'string') return;
+          const groupIndex = typeof item.groupId === 'number' && Number.isInteger(item.groupId)
+            ? groupIndexMap.get(item.groupId)
+            : undefined;
+          itemIndexMap.set(itemIndex, items.length);
+          items.push({
+            title: asString(item.title, t('defaults.newLink')),
+            url: item.url,
+            ...(typeof item.icon === 'string' && item.icon ? { icon: item.icon } : {}),
+            ...(typeof item.favicon === 'string' && item.favicon ? { favicon: item.favicon } : {}),
+            ...(groupIndex !== undefined ? { groupId: groupIndex } : {}),
+          });
+        });
+      }
+
+      const topLevel = normalizeTemplateTopLevel(value.topLevel, itemIndexMap, groupIndexMap, items);
+
       return {
         ...base,
         type,
-        items: Array.isArray(value.items)
-          ? value.items.flatMap((item) => {
-              if (!isRecord(item) || typeof item.url !== 'string') return [];
-              return [{
-                title: asString(item.title, t('defaults.newLink')),
-                url: item.url,
-                ...(typeof item.icon === 'string' && item.icon ? { icon: item.icon } : {}),
-              }];
-            })
-          : [],
+        ...(groups.length > 0 ? { groups } : {}),
+        items,
+        ...(topLevel ? { topLevel } : {}),
       };
+    }
     case 'calendar':
       return { ...base, type };
     case 'clock':
@@ -356,7 +539,7 @@ function normalizeTemplate(value: unknown): TemplateData {
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     throw new Error(t('storage.invalidFileFormat'));
   }
-  if (version > 4) {
+  if (version > 5) {
     throw new Error(t('storage.unsupportedVersion', { version }));
   }
   if (!Array.isArray(value.boards)) {
@@ -384,7 +567,7 @@ function normalizeTemplate(value: unknown): TemplateData {
 
   return {
     format: 'prismi-template',
-    version: 4,
+    version: 5,
     columns,
     theme: normalizeTheme(value.theme),
     ...(normalizeTopWidgets(value.headerWidgets ?? value.topWidgets) ? { headerWidgets: normalizeTopWidgets(value.headerWidgets ?? value.topWidgets) } : {}),

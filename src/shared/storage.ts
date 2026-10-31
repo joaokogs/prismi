@@ -49,6 +49,14 @@ export {
   updateLink,
   searchLinks,
   moveLink,
+  createGroup,
+  addGroup,
+  renameGroup,
+  deleteGroup,
+  moveGroup,
+  reorderGroup,
+  explodeGroupToWidget,
+  absorbWidgetAsGroup,
 } from './storage/links';
 
 export {

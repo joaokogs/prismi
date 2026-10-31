@@ -8,6 +8,8 @@ import { ClockWidgetView } from './ClockWidget';
 import { WeatherWidgetView } from './WeatherWidget';
 import { TodoWidgetView, type TodoDragState } from './TodoWidget';
 import { useColumnCount } from '../../hooks/useColumnCount';
+import { getResponsiveWidgetPositions } from '@shared/utils/widgetPositions';
+import type { LinkPlacement } from '@shared/storage/links';
 
 interface WidgetGridProps {
   widgets: Widget[];
@@ -19,9 +21,27 @@ interface WidgetGridProps {
   onDeleteLink: (widgetId: string, linkId: string) => void;
   onEditLink?: (widgetId: string, linkId: string) => void;
   onAddLink?: (widget: Widget) => void;
+  onAddGroup?: (widget: Widget) => void;
   onResizeWidget?: (widgetId: string, height: number) => void;
   onAddWidget?: () => void;
-  onMoveLink?: (fromWidgetId: string, toWidgetId: string, linkId: string, toIndex: number) => void;
+  onMoveLink?: (
+    fromWidgetId: string,
+    toWidgetId: string,
+    linkId: string,
+    toIndex: number,
+    toGroupId?: string | null,
+    placement?: LinkPlacement | null
+  ) => void;
+  onMoveGroup?: (fromWidgetId: string, toWidgetId: string, groupId: string) => void;
+  onRenameGroup?: (widgetId: string, groupId: string, title: string) => void;
+  onDeleteGroup?: (widgetId: string, groupId: string) => void;
+  onReorderGroup?: (widgetId: string, groupId: string, toIndex: number) => void;
+  onExplodeGroup?: (
+    fromWidgetId: string,
+    groupId: string,
+    target: { col: number; targetId: string | null; position: 'before' | 'after' | 'into'; columnCount: number }
+  ) => void;
+  onMergeWidget?: (fromWidgetId: string, toWidgetId: string) => void;
   onAddTodo?: (widgetId: string, text: string) => void;
   onToggleTodo?: (widgetId: string, todoId: string) => void;
   onUpdateTodo?: (widgetId: string, todoId: string, text: string) => void;
@@ -42,40 +62,9 @@ interface LinkDragState {
   fromWidgetId: string | null;
 }
 
-interface GridPosition {
-  column: number;
-  row: number;
-}
-
-function getResponsiveWidgetPositions(widgets: Widget[], columnCount: number): Map<string, GridPosition> {
-  const sourceColumns = Math.max(
-    1,
-    ...widgets.map((widget) => widget.layoutColumns ?? 0),
-    ...widgets
-      .filter((widget) => widget.layoutColumns === undefined)
-      .map((widget) => (widget.col ?? 0) + 1)
-  );
-  const nextRows = new Map<number, number>();
-  const positions = new Map<string, GridPosition>();
-
-  widgets
-    .map((widget, index) => ({
-      widget,
-      index,
-      column: Math.min(Math.max(widget.col ?? 0, 0), sourceColumns - 1),
-      row: Math.max(widget.order, 0)
-    }))
-    .sort((a, b) => a.column - b.column || a.row - b.row || a.index - b.index)
-    .forEach(({ widget, column: sourceColumn }) => {
-      const column = sourceColumns === 1
-        ? 0
-        : Math.round(sourceColumn * (columnCount - 1) / (sourceColumns - 1));
-      const row = nextRows.get(column) ?? 0;
-      nextRows.set(column, row + 1);
-      positions.set(widget.id, { column, row });
-    });
-
-  return positions;
+interface GroupDragState {
+  groupId: string | null;
+  fromWidgetId: string | null;
 }
 
 export function WidgetGrid({
@@ -88,9 +77,16 @@ export function WidgetGrid({
   onDeleteLink,
   onEditLink,
   onAddLink,
+  onAddGroup,
   onResizeWidget,
   onAddWidget,
   onMoveLink,
+  onMoveGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onReorderGroup,
+  onExplodeGroup,
+  onMergeWidget,
   onAddTodo,
   onToggleTodo,
   onUpdateTodo,
@@ -103,6 +99,7 @@ export function WidgetGrid({
   const columnCount = useColumnCount(gridRef);
   const [drag, setDrag] = useState<DragTarget>({ widgetId: null, col: null, targetId: null, position: null });
   const [linkDrag, setLinkDrag] = useState<LinkDragState>({ linkId: null, fromWidgetId: null });
+  const [groupDrag, setGroupDrag] = useState<GroupDragState>({ groupId: null, fromWidgetId: null });
   const [todoDrag, setTodoDrag] = useState<TodoDragState>({ todoId: null, fromWidgetId: null });
   const widgetPositions = useMemo(
     () => getResponsiveWidgetPositions(widgets, columnCount),
@@ -128,6 +125,21 @@ export function WidgetGrid({
   };
 
   const handleDragOverWidget = (e: DragEvent, widget: Widget) => {
+    if (groupDrag.groupId) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (widget.type === 'links') {
+        const col = widgetPositions.get(widget.id)?.column ?? 0;
+        setDrag({ widgetId: null, col, targetId: widget.id, position: 'into' });
+        return;
+      }
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const position = e.clientY < midY ? 'before' : 'after';
+      const col = widgetPositions.get(widget.id)?.column ?? 0;
+      setDrag({ widgetId: null, col, targetId: widget.id, position });
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     if (!drag.widgetId || drag.widgetId === widget.id) {
@@ -135,14 +147,38 @@ export function WidgetGrid({
       return;
     }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'before' : 'after';
+    const relativeY = (e.clientY - rect.top) / rect.height;
+    const draggedWidget = widgets.find((entry) => entry.id === drag.widgetId);
+    const bothLinks = draggedWidget?.type === 'links' && widget.type === 'links';
+    const position: 'before' | 'after' | 'into' = bothLinks
+      ? (relativeY < 0.3 ? 'before' : relativeY > 0.7 ? 'after' : 'into')
+      : (e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
     const col = widgetPositions.get(widget.id)?.column ?? 0;
     setDrag({ widgetId: drag.widgetId, col, targetId: widget.id, position });
   };
 
   const handleDragOverColumn = (e: DragEvent, colIndex: number) => {
     e.preventDefault();
+
+    if (groupDrag.groupId) {
+      const cards = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-widget-id]'));
+      const nextCard = cards.find((card) => e.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
+
+      if (nextCard?.dataset.widgetId) {
+        setDrag({ widgetId: null, col: colIndex, targetId: nextCard.dataset.widgetId, position: 'before' });
+        return;
+      }
+
+      const lastCard = cards[cards.length - 1];
+      setDrag({
+        widgetId: null,
+        col: colIndex,
+        targetId: lastCard?.dataset.widgetId ?? null,
+        position: lastCard ? 'after' : 'into'
+      });
+      return;
+    }
+
     if (!drag.widgetId) return;
 
     const cards = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-widget-id]'))
@@ -186,9 +222,41 @@ export function WidgetGrid({
   };
 
   const handleDropOnWidget = (e: DragEvent, targetWidget: Widget) => {
+    if (groupDrag.groupId) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (targetWidget.type === 'links') {
+        handleGroupDrop(targetWidget.id);
+        return;
+      }
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const position = drag.targetId === targetWidget.id && drag.position === 'after'
+        ? 'after'
+        : e.clientY < midY ? 'before' : 'after';
+      const col = widgetPositions.get(targetWidget.id)?.column ?? drag.col ?? 0;
+      if (onExplodeGroup && groupDrag.fromWidgetId && groupDrag.groupId) {
+        onExplodeGroup(groupDrag.fromWidgetId, groupDrag.groupId, {
+          col,
+          targetId: targetWidget.id,
+          position,
+          columnCount
+        });
+      }
+      setDrag({ widgetId: null, col: null, targetId: null, position: null });
+      setGroupDrag({ groupId: null, fromWidgetId: null });
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     if (!drag.widgetId || drag.widgetId === targetWidget.id) {
+      setDrag({ widgetId: null, col: null, targetId: null, position: null });
+      return;
+    }
+
+    const draggedWidget = widgets.find((entry) => entry.id === drag.widgetId);
+    if (drag.position === 'into' && targetWidget.type === 'links' && draggedWidget?.type === 'links') {
+      onMergeWidget?.(drag.widgetId, targetWidget.id);
       setDrag({ widgetId: null, col: null, targetId: null, position: null });
       return;
     }
@@ -214,6 +282,22 @@ export function WidgetGrid({
 
   const handleDropOnColumn = (e: DragEvent, colIndex: number) => {
     e.preventDefault();
+
+    if (groupDrag.groupId) {
+      const { groupId, fromWidgetId } = groupDrag;
+      if (onExplodeGroup && groupId && fromWidgetId) {
+        onExplodeGroup(fromWidgetId, groupId, {
+          col: drag.col ?? colIndex,
+          targetId: drag.targetId,
+          position: drag.position ?? 'into',
+          columnCount
+        });
+      }
+      setDrag({ widgetId: null, col: null, targetId: null, position: null });
+      setGroupDrag({ groupId: null, fromWidgetId: null });
+      return;
+    }
+
     if (!drag.widgetId) {
       setDrag({ widgetId: null, col: null, targetId: null, position: null });
       return;
@@ -244,6 +328,7 @@ export function WidgetGrid({
   };
 
   const handleLinkDragStart = (e: DragEvent, linkId: string, widgetId: string) => {
+    if (groupDrag.groupId) return;
     e.dataTransfer?.setData('text/plain', JSON.stringify({ linkId, widgetId }));
     e.dataTransfer?.setDragImage(new Image(), 0, 0);
     setLinkDrag({ linkId, fromWidgetId: widgetId });
@@ -253,7 +338,13 @@ export function WidgetGrid({
     setLinkDrag({ linkId: null, fromWidgetId: null });
   };
 
-  const handleLinkDrop = (targetWidgetId: string, targetLinkId: string | null, position: 'before' | 'after') => {
+  const handleLinkDrop = (
+    targetWidgetId: string,
+    targetGroupId: string | null,
+    targetLinkId: string | null,
+    position: 'before' | 'after',
+    targetGroupEntryId?: string | null
+  ) => {
     if (!linkDrag.linkId || !linkDrag.fromWidgetId) {
       setLinkDrag({ linkId: null, fromWidgetId: null });
       return;
@@ -270,17 +361,69 @@ export function WidgetGrid({
       return;
     }
 
+    // I1: soltar sobre o próprio link não muda nada.
+    if (targetLinkId && targetLinkId === linkDrag.linkId) {
+      setLinkDrag({ linkId: null, fromWidgetId: null });
+      return;
+    }
+
+    const targetGroups = targetWidget.groups ?? [];
+    const targetGroupExists = !!targetGroupId && targetGroups.some((group) => group.id === targetGroupId);
+    const groupId = targetGroupExists ? targetGroupId : null;
     const targetItems = targetWidget.items;
+    const belongsToTargetGroup = (item: (typeof targetItems)[number]): boolean => (
+      groupId
+        ? item.groupId === groupId
+        : !item.groupId || !targetGroups.some((group) => group.id === item.groupId)
+    );
+
     let toIndex: number;
     if (targetLinkId) {
       const idx = targetItems.findIndex((l) => l.id === targetLinkId);
-      toIndex = position === 'after' ? idx + 1 : idx;
+      toIndex = idx === -1 ? targetItems.length : (position === 'after' ? idx + 1 : idx);
+    } else if (position === 'before') {
+      const firstIndex = targetItems.findIndex(belongsToTargetGroup);
+      toIndex = firstIndex === -1 ? targetItems.length : firstIndex;
     } else {
-      toIndex = position === 'after' ? targetItems.length : 0;
+      let lastIndex = -1;
+      targetItems.forEach((item, index) => {
+        if (belongsToTargetGroup(item)) lastIndex = index;
+      });
+      toIndex = lastIndex === -1 ? targetItems.length : lastIndex + 1;
     }
 
-    onMoveLink(linkDrag.fromWidgetId, targetWidgetId, linkDrag.linkId, toIndex);
+    const placement = targetGroupEntryId
+      ? { kind: 'group' as const, id: targetGroupEntryId, position }
+      : targetLinkId
+        ? { kind: 'link' as const, id: targetLinkId, position }
+        : null;
+
+    onMoveLink(linkDrag.fromWidgetId, targetWidgetId, linkDrag.linkId, toIndex, groupId, placement);
     setLinkDrag({ linkId: null, fromWidgetId: null });
+  };
+
+  const handleGroupDragStart = (e: DragEvent, groupId: string, widgetId: string) => {
+    e.stopPropagation();
+    e.dataTransfer?.setData('text/plain', JSON.stringify({ groupId, widgetId }));
+    e.dataTransfer?.setDragImage(new Image(), 0, 0);
+    setGroupDrag({ groupId, fromWidgetId: widgetId });
+  };
+
+  const handleGroupDragEnd = () => {
+    setGroupDrag({ groupId: null, fromWidgetId: null });
+    setDrag({ widgetId: null, col: null, targetId: null, position: null });
+  };
+
+  const handleGroupDrop = (targetWidgetId: string) => {
+    const { groupId, fromWidgetId } = groupDrag;
+    if (!groupId || !fromWidgetId || fromWidgetId === targetWidgetId) {
+      setGroupDrag({ groupId: null, fromWidgetId: null });
+      setDrag({ widgetId: null, col: null, targetId: null, position: null });
+      return;
+    }
+    onMoveGroup?.(fromWidgetId, targetWidgetId, groupId);
+    setGroupDrag({ groupId: null, fromWidgetId: null });
+    setDrag({ widgetId: null, col: null, targetId: null, position: null });
   };
 
   const handleTodoDragStart = (e: DragEvent, todoId: string, widgetId: string) => {
@@ -334,13 +477,18 @@ export function WidgetGrid({
         >
           {colWidgets.length === 0 && drag.col === colIndex && drag.position === 'into' && <DropIndicator />}
           {colWidgets.map((widget) => {
-            const isTarget = drag.widgetId && drag.targetId === widget.id && drag.col === (widgetPositions.get(widget.id)?.column ?? 0);
+            const isTarget = !!drag.targetId && drag.targetId === widget.id && drag.col === (widgetPositions.get(widget.id)?.column ?? 0);
             return (
               <div key={widget.id} className="widget-drop-wrapper">
                 {isTarget && drag.position === 'before' && <DropIndicator />}
                 <WidgetCard
                   widget={widget}
                   isDragging={widget.id === drag.widgetId}
+                  dropHint={
+                    drag.targetId === widget.id && drag.position === 'into'
+                      ? (groupDrag.groupId ? 'group' : 'into')
+                      : null
+                  }
                   onDragStart={isEditing ? (e) => handleDragStart(e, widget.id) : undefined}
                   onDragOver={isEditing ? (e) => handleDragOverWidget(e, widget) : undefined}
                   onDrop={isEditing ? (e) => handleDropOnWidget(e, widget) : undefined}
@@ -348,11 +496,13 @@ export function WidgetGrid({
                   onEdit={isEditing ? () => onEditWidget(widget) : undefined}
                   onDelete={isEditing ? () => onDeleteWidget(widget.id) : undefined}
                   onAddLink={isEditing && widget.type === 'links' && onAddLink ? () => onAddLink(widget) : undefined}
+                  onAddGroup={isEditing && widget.type === 'links' && onAddGroup ? () => onAddGroup(widget) : undefined}
                   onResize={isEditing && onResizeWidget && (widget.type === 'links' || widget.type === 'todo') ? (h) => onResizeWidget(widget.id, h) : undefined}
                 >
                   <WidgetContent
                     widget={widget}
                     linkDrag={linkDrag}
+                    groupDrag={groupDrag}
                     todoDrag={todoDrag}
                     openInNewTab={openInNewTab}
                     onOpenLink={onOpenLink}
@@ -360,7 +510,13 @@ export function WidgetGrid({
                     onEditLink={isEditing && onEditLink ? (linkId) => onEditLink(widget.id, linkId) : undefined}
                     onLinkDragStart={isEditing ? (e, linkId) => handleLinkDragStart(e, linkId, widget.id) : undefined}
                     onLinkDragEnd={isEditing ? handleLinkDragEnd : undefined}
-                    onLinkDrop={isEditing ? (targetLinkId, position) => handleLinkDrop(widget.id, targetLinkId, position) : undefined}
+                    onLinkDrop={isEditing ? (targetGroupId, targetLinkId, position, targetGroupEntryId) => handleLinkDrop(widget.id, targetGroupId, targetLinkId, position, targetGroupEntryId) : undefined}
+                    onRenameGroup={isEditing && onRenameGroup ? (groupId, title) => onRenameGroup(widget.id, groupId, title) : undefined}
+                    onDeleteGroup={isEditing && onDeleteGroup ? (groupId) => onDeleteGroup(widget.id, groupId) : undefined}
+                    onReorderGroup={isEditing && onReorderGroup ? (groupId, toIndex) => onReorderGroup(widget.id, groupId, toIndex) : undefined}
+                    onGroupDragStart={isEditing ? (e, groupId) => handleGroupDragStart(e, groupId, widget.id) : undefined}
+                    onGroupDragEnd={isEditing ? handleGroupDragEnd : undefined}
+                    onGroupDrop={isEditing ? () => handleGroupDrop(widget.id) : undefined}
                     onAddTodo={onAddTodo}
                     onToggleTodo={onToggleTodo}
                     onUpdateTodo={onUpdateTodo}
@@ -397,6 +553,7 @@ function DropIndicator() {
 function WidgetContent({
   widget,
   linkDrag,
+  groupDrag,
   openInNewTab,
   onOpenLink,
   onDeleteLink,
@@ -404,6 +561,12 @@ function WidgetContent({
   onLinkDragStart,
   onLinkDragEnd,
   onLinkDrop,
+  onRenameGroup,
+  onDeleteGroup,
+  onReorderGroup,
+  onGroupDragStart,
+  onGroupDragEnd,
+  onGroupDrop,
   onAddTodo,
   onToggleTodo,
   onUpdateTodo,
@@ -415,6 +578,7 @@ function WidgetContent({
 }: {
   widget: Widget;
   linkDrag: LinkDragState;
+  groupDrag: GroupDragState;
   todoDrag: TodoDragState;
   openInNewTab: boolean;
   onOpenLink?: (url: string) => void;
@@ -422,7 +586,18 @@ function WidgetContent({
   onEditLink?: (linkId: string) => void;
   onLinkDragStart?: (e: DragEvent, linkId: string) => void;
   onLinkDragEnd?: () => void;
-  onLinkDrop?: (targetLinkId: string | null, position: 'before' | 'after') => void;
+  onLinkDrop?: (
+    targetGroupId: string | null,
+    targetLinkId: string | null,
+    position: 'before' | 'after',
+    targetGroupEntryId?: string | null
+  ) => void;
+  onRenameGroup?: (groupId: string, title: string) => void;
+  onDeleteGroup?: (groupId: string) => void;
+  onReorderGroup?: (groupId: string, toIndex: number) => void;
+  onGroupDragStart?: (e: DragEvent, groupId: string) => void;
+  onGroupDragEnd?: () => void;
+  onGroupDrop?: () => void;
   onAddTodo?: (widgetId: string, text: string) => void;
   onToggleTodo?: (widgetId: string, todoId: string) => void;
   onUpdateTodo?: (widgetId: string, todoId: string, text: string) => void;
@@ -437,6 +612,7 @@ function WidgetContent({
         <LinksWidgetView
           widget={widget}
           linkDrag={linkDrag}
+          groupDrag={groupDrag}
           openInNewTab={openInNewTab}
           onOpenLink={onOpenLink}
           onDeleteLink={onDeleteLink}
@@ -444,6 +620,12 @@ function WidgetContent({
           onLinkDragStart={onLinkDragStart}
           onLinkDragEnd={onLinkDragEnd}
           onLinkDrop={onLinkDrop}
+          onRenameGroup={onRenameGroup}
+          onDeleteGroup={onDeleteGroup}
+          onReorderGroup={onReorderGroup}
+          onGroupDragStart={onGroupDragStart}
+          onGroupDragEnd={onGroupDragEnd}
+          onGroupDrop={onGroupDrop}
         />
       );
     case 'calendar':

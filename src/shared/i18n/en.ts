@@ -100,6 +100,8 @@ export const en: Record<string, string> = {
   'linkDialog.titlePlaceholder': 'Ex: My favorite site',
   'linkDialog.url': 'URL',
   'linkDialog.urlPlaceholder': 'https://...',
+  'linkDialog.group': 'Subgroup',
+  'linkDialog.noGroup': 'No subgroup',
   'linkDialog.cancel': 'Cancel',
   'linkDialog.save': 'Save',
   'linkDialog.add': 'Add',
@@ -111,6 +113,13 @@ export const en: Record<string, string> = {
   'linksWidget.actions': 'Actions',
   'linksWidget.edit': 'Edit',
   'linksWidget.delete': 'Delete',
+  'linksWidget.groupActions': 'Subgroup actions',
+  'linksWidget.renameGroup': 'Rename subgroup',
+  'linksWidget.deleteGroup': 'Delete subgroup',
+  'linksWidget.dragGroup': 'Drag subgroup {title}',
+  'linksWidget.collapseGroup': 'Collapse {title}',
+  'linksWidget.expandGroup': 'Expand {title}',
+  'linksWidget.emptyGroup': 'No links in this subgroup',
 
   // NewTabDialog
   'newTab.title': 'New tab',
@@ -179,6 +188,7 @@ export const en: Record<string, string> = {
   'widgetCard.widgetActions': 'Widget actions',
   'widgetCard.actions': 'Actions',
   'widgetCard.addLink': 'Add link',
+  'widgetCard.addGroup': 'New subgroup',
   'widgetCard.edit': 'Edit',
   'widgetCard.delete': 'Delete',
   'widgetCard.resize': 'Resize widget',
@@ -288,6 +298,7 @@ export const en: Record<string, string> = {
   // Storage defaults
   'defaults.newBoard': 'New tab',
   'defaults.newLink': 'Link without title',
+  'defaults.newGroup': 'New subgroup',
   'defaults.newNote': 'New note',
   'defaults.todoWidget': 'Todo',
   'defaults.linksWidget': 'Links',

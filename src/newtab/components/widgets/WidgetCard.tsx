@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import type { Widget } from '@shared/types';
-import { MoreVertical, Plus, Pencil, Trash2 } from 'lucide-preact';
+import { MoreVertical, Plus, Pencil, Trash2, FolderPlus } from 'lucide-preact';
 import { useI18n } from '@shared/i18n';
 import { notifyMenuOpened, subscribeToMenuClose } from '../../utils/menu';
 
@@ -11,12 +11,14 @@ interface WidgetCardProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onAddLink?: () => void;
+  onAddGroup?: () => void;
   onResize?: (height: number) => void;
   onDragStart?: (e: DragEvent) => void;
   onDragOver?: (e: DragEvent) => void;
   onDrop?: (e: DragEvent) => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
+  dropHint?: 'into' | 'group' | null;
   className?: string;
 }
 
@@ -26,12 +28,14 @@ export function WidgetCard({
   onEdit,
   onDelete,
   onAddLink,
+  onAddGroup,
   onResize,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
   isDragging,
+  dropHint = null,
   className = ''
 }: WidgetCardProps) {
   const { t } = useI18n();
@@ -135,7 +139,7 @@ export function WidgetCard({
   return (
     <div
       ref={cardRef}
-      className={`widget-card ${widget.colSpan > 1 ? 'widget-card--wide' : ''} ${isDragging ? 'widget-card--dragging' : ''} ${widget.height ? 'widget-card--fixed-height' : ''} ${isResizing ? 'widget-card--resizing' : ''} ${className}`}
+      className={`widget-card ${widget.colSpan > 1 ? 'widget-card--wide' : ''} ${isDragging ? 'widget-card--dragging' : ''} ${widget.height ? 'widget-card--fixed-height' : ''} ${isResizing ? 'widget-card--resizing' : ''} ${dropHint === 'into' ? 'widget-card--drop-into' : ''} ${dropHint === 'group' ? 'widget-card--drop-group' : ''} ${className}`}
       draggable={!!onDragStart && !isResizing}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -152,7 +156,7 @@ export function WidgetCard({
             <h3 className="widget-card__title">{widget.title}</h3>
             </div>
           )}
-          {(onEdit || onDelete || onAddLink) && (
+          {(onEdit || onDelete || onAddLink || onAddGroup) && (
             <div className="widget-card__actions">
               <button
                 ref={kebabRef}
@@ -169,6 +173,15 @@ export function WidgetCard({
                   className="widget-card__menu"
                   style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
                 >
+                  {onAddGroup && widget.type === 'links' && (
+                    <button
+                      className="widget-card__menu-item"
+                      onClick={handleAction(onAddGroup)}
+                    >
+                      <FolderPlus size={14} strokeWidth={2} />
+                      {t('widgetCard.addGroup')}
+                    </button>
+                  )}
                   {onAddLink && (
                     <button
                       className="widget-card__menu-item"
