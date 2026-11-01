@@ -116,6 +116,17 @@
   transform: scale(0.98);
 }
 
+.widget-card.widget-card--drop-into {
+  border: 1px dashed var(--accent);
+  background-color: rgba(var(--accent-rgb), 0.08);
+}
+
+.widget-card.widget-card--drop-group {
+  border: 1px dashed var(--accent);
+  background-color: rgba(var(--accent-rgb), 0.12);
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-md);
+}
+
 .widget-card--over::after {
   content: '';
   position: absolute;

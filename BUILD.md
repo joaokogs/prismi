@@ -1,4 +1,4 @@
-# Build Instructions — Prismi Dashboard v1.6.1
+# Build Instructions — Prismi Dashboard v1.6.4
 
 ## System Requirements
 

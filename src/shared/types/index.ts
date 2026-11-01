@@ -1,11 +1,20 @@
 export type WidgetType = 'links' | 'calendar' | 'clock' | 'weather' | 'todo';
 
+export interface LinkGroup {
+  id: string;
+  title: string;
+  order?: number;
+}
+
 export interface LinkItem {
   id: string;
   title: string;
   url: string;
   icon?: string;
   favicon?: string;
+  groupId?: string;
+  /** Posição entre as entradas de topo (links soltos + subpastas). Ausente dentro de subpastas. */
+  order?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -25,6 +34,7 @@ export interface BaseWidget {
 export interface LinksWidget extends BaseWidget {
   type: 'links';
   items: LinkItem[];
+  groups?: LinkGroup[];
 }
 
 export interface CalendarWidget extends BaseWidget {

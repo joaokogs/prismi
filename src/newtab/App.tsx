@@ -14,7 +14,8 @@ import {
 import { deleteBackground, getBackgroundBlob, gcOrphanedAssets } from '@shared/storage/backgrounds';
 import { createBoard, addBoard, renameBoard, reorderBoard, deleteBoard, getBoardById, getInitialBoardId, updateSettings, removeRecentSearch, clearRecentSearches, addRecentSearch } from '@shared/storage/boards';
 import { createWidget, addWidget, deleteWidget, updateWidget, getWidgetsForBoard } from '@shared/storage/widgets';
-import { createLink, addLink, deleteLink, updateLink, moveLink } from '@shared/storage/links';
+import { createLink, addLink, deleteLink, updateLink, moveLink, createGroup, addGroup, renameGroup, deleteGroup, moveGroup, reorderGroup, explodeGroupToWidget, absorbWidgetAsGroup } from '@shared/storage/links';
+import type { LinkPlacement } from '@shared/storage/links';
 import { createTodoItem, addTodoItem, deleteTodoItem, updateTodoItem, toggleTodoItem, moveTodoItem } from '@shared/storage/todos';
 import { exportData, importData } from '@shared/storage/backup';
 import { BoardTabs } from './components/layout/BoardTabs';
@@ -500,12 +501,80 @@ export function App() {
     });
   };
 
-  const handleMoveLink = (fromWidgetId: string, toWidgetId: string, linkId: string, toIndex: number) => {
+  const handleMoveLink = (
+    fromWidgetId: string,
+    toWidgetId: string,
+    linkId: string,
+    toIndex: number,
+    toGroupId?: string | null,
+    placement?: LinkPlacement | null
+  ) => {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
-      const next = moveLink(prev, activeBoardId, fromWidgetId, toWidgetId, linkId, toIndex);
+      const next = moveLink(prev, activeBoardId, fromWidgetId, toWidgetId, linkId, toIndex, toGroupId, placement);
       return next;
+    });
+  };
+
+  const handleAddGroup = (widgetId: string) => {
+    if (!activeBoardId) return;
+    const group = createGroup(t('defaults.newGroup'));
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return addGroup(prev, activeBoardId, widgetId, group);
+    });
+  };
+
+  const handleRenameGroup = (widgetId: string, groupId: string, title: string) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return renameGroup(prev, activeBoardId, widgetId, groupId, title);
+    });
+  };
+
+  const handleDeleteGroup = (widgetId: string, groupId: string) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return deleteGroup(prev, activeBoardId, widgetId, groupId);
+    });
+  };
+
+  const handleMoveGroup = (fromWidgetId: string, toWidgetId: string, groupId: string) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return moveGroup(prev, activeBoardId, fromWidgetId, toWidgetId, groupId);
+    });
+  };
+
+  const handleReorderGroup = (widgetId: string, groupId: string, toIndex: number) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return reorderGroup(prev, activeBoardId, widgetId, groupId, toIndex);
+    });
+  };
+
+  const handleExplodeGroup = (
+    fromWidgetId: string,
+    groupId: string,
+    target: { col: number; targetId: string | null; position: 'before' | 'after' | 'into'; columnCount: number }
+  ) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return explodeGroupToWidget(prev, activeBoardId, fromWidgetId, groupId, target);
+    });
+  };
+
+  const handleMergeWidget = (fromWidgetId: string, toWidgetId: string) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return absorbWidgetAsGroup(prev, activeBoardId, fromWidgetId, toWidgetId);
     });
   };
 
@@ -518,9 +587,9 @@ export function App() {
     });
   };
 
-  const handleAddLink = (widgetId: string, title: string, url: string, icon?: string) => {
+  const handleAddLink = (widgetId: string, title: string, url: string, icon?: string, groupId?: string) => {
     if (!activeBoardId) return;
-    const link = createLink(title, url, icon);
+    const link = createLink(title, url, icon, groupId);
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       const next = addLink(prev, activeBoardId, widgetId, link);
@@ -533,14 +602,15 @@ export function App() {
     setEditingLink({ widgetId, linkId });
   };
 
-  const handleUpdateLink = (widgetId: string, linkId: string, title: string, url: string, icon?: string) => {
+  const handleUpdateLink = (widgetId: string, linkId: string, title: string, url: string, icon?: string, groupId?: string) => {
     if (!activeBoardId) return;
     setData((prev) => {
       if (!prev || !activeBoardId) return prev;
       return updateLink(prev, activeBoardId, widgetId, linkId, {
         title: title.trim() || t('defaults.newLink'),
         url,
-        icon: icon || undefined
+        icon: icon || undefined,
+        groupId: groupId || undefined
       });
     });
     setEditingLink(null);
@@ -599,7 +669,13 @@ export function App() {
     if (!widget || widget.type !== 'links') return null;
     const link = widget.items.find((l) => l.id === editingLink.linkId);
     if (!link) return null;
-    return { widgetTitle: widget.title, widgetId: editingLink.widgetId, link };
+    return {
+      widgetTitle: widget.title,
+      widgetId: editingLink.widgetId,
+      link,
+      groups: widget.groups,
+      groupId: link.groupId ?? null,
+    };
   }, [editingLink, data, activeBoardId]);
 
   const handleSettingsChange = (settings: Partial<AppData['settings']>) => {
@@ -863,9 +939,16 @@ export function App() {
             onDeleteLink={handleDeleteLink}
             onEditLink={handleEditLink}
             onAddLink={setAddingLinkWidget}
+            onAddGroup={(widget) => handleAddGroup(widget.id)}
             onResizeWidget={handleResizeWidget}
             onAddWidget={handleStartAddWidget}
             onMoveLink={handleMoveLink}
+            onMoveGroup={handleMoveGroup}
+            onRenameGroup={handleRenameGroup}
+            onDeleteGroup={handleDeleteGroup}
+            onReorderGroup={handleReorderGroup}
+            onExplodeGroup={handleExplodeGroup}
+            onMergeWidget={handleMergeWidget}
             onAddTodo={handleAddTodo}
             onToggleTodo={handleToggleTodo}
             onUpdateTodo={handleUpdateTodo}
@@ -892,10 +975,11 @@ export function App() {
         />
       )}
 
-      {addingLinkWidget && (
+      {addingLinkWidget && addingLinkWidget.type === 'links' && (
         <LinkDialog
           widgetTitle={addingLinkWidget.title}
-          onSave={(title, url, icon) => handleAddLink(addingLinkWidget.id, title, url, icon)}
+          groups={addingLinkWidget.groups}
+          onSave={(title, url, icon, groupId) => handleAddLink(addingLinkWidget.id, title, url, icon, groupId)}
           onClose={() => setAddingLinkWidget(null)}
         />
       )}
@@ -904,7 +988,9 @@ export function App() {
         <LinkDialog
           widgetTitle={editingLinkData.widgetTitle}
           link={editingLinkData.link}
-          onSave={(title, url, icon) => handleUpdateLink(editingLinkData.widgetId, editingLinkData.link.id, title, url, icon)}
+          groups={editingLinkData.groups}
+          groupId={editingLinkData.groupId}
+          onSave={(title, url, icon, groupId) => handleUpdateLink(editingLinkData.widgetId, editingLinkData.link.id, title, url, icon, groupId)}
           onClose={() => setEditingLink(null)}
         />
       )}
