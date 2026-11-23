@@ -28,6 +28,16 @@ export interface BaseWidget {
   height?: number;
   col?: number;
   layoutColumns?: number;
+  /** Opacidade individual do fundo do widget (0–1). Ausente = herda a do tema. */
+  opacity?: number;
+  /** Largura da borda em px. */
+  borderWidth?: number;
+  /** Cor da borda (hex). Ausente = usa a cor do tema. */
+  borderColor?: string;
+  /** Exibe sombra no card. Ausente = true. */
+  shadow?: boolean;
+  /** Oculta o título do widget. */
+  hideTitle?: boolean;
   updatedAt?: number;
 }
 

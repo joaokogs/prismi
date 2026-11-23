@@ -7,6 +7,8 @@
   /* Light theme (default) */
   --bg-body: #f8fafc;
   --bg-surface: rgba(255, 255, 255, 0.78);
+  --surface-rgb: 255, 255, 255;
+  --surface-opacity: 0.78;
   --bg-surface-solid: #ffffff;
   --bg-surface-hover: rgba(255, 255, 255, 0.9);
   --bg-hover: rgba(255, 255, 255, 0.55);
@@ -34,6 +36,8 @@
   --accent-rgb: 129, 140, 248;
   --bg-body: #0f172a;
   --bg-surface: rgba(30, 41, 59, 0.72);
+  --surface-rgb: 30, 41, 59;
+  --surface-opacity: 0.72;
   --bg-surface-solid: #1e293b;
   --bg-surface-hover: rgba(51, 65, 85, 0.85);
   --bg-hover: rgba(255, 255, 255, 0.08);

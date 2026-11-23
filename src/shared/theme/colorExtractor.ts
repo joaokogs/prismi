@@ -178,6 +178,8 @@ export function computeThemeVariables(theme: ThemeConfig, isDark: boolean): Reco
     '--accent': theme.primaryColor,
     '--accent-rgb': primaryRgb,
     '--accent-hover': accentHover,
+    '--surface-rgb': boardRgb,
+    '--surface-opacity': String(theme.boardOpacity),
     '--bg-surface': `rgba(${boardRgb}, ${theme.boardOpacity})`,
     '--bg-surface-solid': boardSolid,
     '--bg-surface-hover': `rgba(${boardRgb}, ${Math.min(1, theme.boardOpacity + 0.12)})`,

@@ -78,10 +78,10 @@
   flex-direction: column;
   width: 100%;
   padding: 18px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(var(--surface-rgb, 30, 41, 59), var(--widget-opacity, var(--surface-opacity, 0.72)));
+  border: var(--widget-border-width, 1px) solid var(--widget-border-color, var(--border));
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--widget-shadow, var(--shadow-md));
   backdrop-filter: blur(var(--surface-blur));
   -webkit-backdrop-filter: blur(var(--surface-blur));
   transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-fast);
@@ -107,8 +107,20 @@
 }
 
 .widget-card:hover {
-  box-shadow: var(--shadow-lg);
-  border-color: rgba(var(--accent-rgb), 0.25);
+  box-shadow: var(--widget-shadow, var(--shadow-lg));
+  border-color: var(--widget-border-color, rgba(var(--accent-rgb), 0.25));
+}
+
+.widget-card--transparent,
+.widget-card--transparent:hover {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.widget-card[data-borderless='true'],
+.widget-card[data-borderless='true']:hover {
+  border-color: transparent;
 }
 
 .widget-card--dragging {

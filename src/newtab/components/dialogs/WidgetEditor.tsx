@@ -10,11 +10,13 @@ import { uiButtonPrimaryClass, uiButtonSecondaryClass, uiFieldClass, uiIconButto
 interface WidgetEditorProps {
   widget?: Widget | null;
   linksOnly?: boolean;
+  /** Opacidade padrão (do tema), usada quando o widget herda a opacidade. */
+  defaultOpacity?: number;
   onSave: (widget: Widget) => void;
   onClose: () => void;
 }
 
-export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: WidgetEditorProps) {
+export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72, onSave, onClose }: WidgetEditorProps) {
   const { t } = useI18n();
   const isEdit = !!widget;
 
@@ -41,6 +43,15 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
   const [iconSize, setIconSize] = useState<number>(
     (widget?.type === 'links' && widget.iconSize) || 28
   );
+  const [opacity, setOpacity] = useState<number>(
+    Math.round((widget?.opacity ?? defaultOpacity) * 100)
+  );
+  const [opacityCustom, setOpacityCustom] = useState(widget?.opacity !== undefined);
+  const [borderWidth, setBorderWidth] = useState<number>(widget?.borderWidth ?? 1);
+  const [borderColor, setBorderColor] = useState<string>(widget?.borderColor ?? '#ffffff');
+  const [borderColorCustom, setBorderColorCustom] = useState(widget?.borderColor !== undefined);
+  const [hideTitle, setHideTitle] = useState<boolean>(!!widget?.hideTitle);
+  const [shadowEnabled, setShadowEnabled] = useState<boolean>(widget?.shadow !== false);
 
   useEffect(() => {
     if (type !== 'weather') return;
@@ -70,7 +81,12 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
     const updated: Widget = {
       ...base,
       title: title.trim() || base.title,
-      height: height !== '' ? Math.max(Number(height), 120) : undefined
+      height: height !== '' ? Math.max(Number(height), 40) : undefined,
+      opacity: opacityCustom ? opacity / 100 : undefined,
+      borderWidth,
+      borderColor: borderColorCustom ? borderColor : undefined,
+      shadow: shadowEnabled ? undefined : false,
+      hideTitle: hideTitle || undefined
     } as Widget;
 
     if (updated.type === 'weather') {
@@ -143,10 +159,115 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
                   }}
                   className={uiInputClass}
                   placeholder={t('widgetEditor.auto')}
-                  min={120}
+                  min={40}
                 />
               </label>
             )}
+          </div>
+
+          {type === 'links' && (
+            <label className="widget-editor__check widget-editor__section widget-editor__section--compact">
+              <input
+                type="checkbox"
+                checked={hideTitle}
+                onChange={(e) => setHideTitle((e.target as HTMLInputElement).checked)}
+              />
+              <span>{t('widgetEditor.hideTitle')}</span>
+            </label>
+          )}
+
+          <div className="widget-editor__section">
+            <label className="widget-editor__label">{t('widgetEditor.opacity')}</label>
+            <div className="widget-editor__slider">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={opacity}
+                aria-label={t('widgetEditor.opacity')}
+                onChange={(e) => {
+                  setOpacityCustom(true);
+                  setOpacity(Number((e.target as HTMLInputElement).value));
+                }}
+              />
+              <span className="widget-editor__slider-value">{opacity}%</span>
+            </div>
+            {opacityCustom && (
+              <button
+                type="button"
+                className="widget-editor__inherit"
+                onClick={() => {
+                  setOpacityCustom(false);
+                  setOpacity(Math.round(defaultOpacity * 100));
+                }}
+              >
+                {t('widgetEditor.opacityInherit')}
+              </button>
+            )}
+          </div>
+
+          <div className="widget-editor__section">
+            <label className="widget-editor__label">{t('widgetEditor.borders')}</label>
+            <label className={uiFieldClass}>
+              <span className={uiLabelClass}>{t('widgetEditor.borderWidth')}</span>
+              <div className="widget-editor__slider">
+                <input
+                  type="range"
+                  min={0}
+                  max={8}
+                  step={1}
+                  value={borderWidth}
+                  aria-label={t('widgetEditor.borderWidth')}
+                  onChange={(e) => setBorderWidth(Number((e.target as HTMLInputElement).value))}
+                />
+                <span className="widget-editor__slider-value">{borderWidth}px</span>
+              </div>
+            </label>
+            <label className={`${uiFieldClass} widget-editor__border-color`}>
+              <span className={uiLabelClass}>{t('widgetEditor.borderColor')}</span>
+              <div className="widget-editor__color-row">
+                <input
+                  type="color"
+                  value={borderColor}
+                  aria-label={t('widgetEditor.borderColor')}
+                  onChange={(e) => {
+                    setBorderColorCustom(true);
+                    setBorderColor((e.target as HTMLInputElement).value);
+                  }}
+                />
+                <input
+                  type="text"
+                  value={borderColor}
+                  onChange={(e) => {
+                    const value = (e.target as HTMLInputElement).value;
+                    setBorderColor(value);
+                    if (/^#[0-9a-fA-F]{6}$/.test(value)) setBorderColorCustom(true);
+                  }}
+                  className={`${uiInputClass} widget-editor__color-hex`}
+                  placeholder="#ffffff"
+                />
+                {borderColorCustom ? (
+                  <button
+                    type="button"
+                    className="widget-editor__inherit"
+                    onClick={() => setBorderColorCustom(false)}
+                  >
+                    {t('widgetEditor.borderColorTheme')}
+                  </button>
+                ) : (
+                  <span className="widget-editor__border-hint">{t('widgetEditor.borderColorTheme')}</span>
+                )}
+              </div>
+            </label>
+            <label className="widget-editor__check widget-editor__shadow-check">
+              <input
+                type="checkbox"
+                checked={shadowEnabled}
+                onChange={(e) => setShadowEnabled((e.target as HTMLInputElement).checked)}
+              />
+              <span>{t('widgetEditor.shadow')}</span>
+            </label>
           </div>
 
           {type === 'links' && (

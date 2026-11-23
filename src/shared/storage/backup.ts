@@ -37,6 +37,11 @@ interface TemplateWidgetBase {
   title: string;
   colSpan: number;
   height?: number;
+  opacity?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  shadow?: boolean;
+  hideTitle?: boolean;
   position: TemplateWidgetPosition;
 }
 
@@ -119,6 +124,11 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
     title: widget.title,
     colSpan: widget.colSpan,
     ...(widget.height !== undefined ? { height: widget.height } : {}),
+    ...(widget.opacity !== undefined ? { opacity: widget.opacity } : {}),
+    ...(widget.borderWidth !== undefined ? { borderWidth: widget.borderWidth } : {}),
+    ...(widget.borderColor ? { borderColor: widget.borderColor } : {}),
+    ...(widget.shadow === false ? { shadow: false } : {}),
+    ...(widget.hideTitle ? { hideTitle: true } : {}),
     position
   };
 
@@ -279,6 +289,11 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
     colSpan: widget.colSpan,
     order: position.row,
     ...(widget.height !== undefined ? { height: widget.height } : {}),
+    ...(widget.opacity !== undefined ? { opacity: widget.opacity } : {}),
+    ...(widget.borderWidth !== undefined ? { borderWidth: widget.borderWidth } : {}),
+    ...(widget.borderColor ? { borderColor: widget.borderColor } : {}),
+    ...(widget.shadow === false ? { shadow: false } : {}),
+    ...(widget.hideTitle ? { hideTitle: true } : {}),
     col: position.column,
     layoutColumns: columns
   };
@@ -473,6 +488,17 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
     title: asString(value.title, t(`defaults.${type === 'todo' ? 'todoWidget' : `${type}Widget`}`)),
     colSpan: asPositiveNumber(value.colSpan, 1),
     ...(typeof value.height === 'number' && Number.isFinite(value.height) && value.height > 0 ? { height: value.height } : {}),
+    ...(typeof value.opacity === 'number' && Number.isFinite(value.opacity)
+      ? { opacity: Math.min(Math.max(value.opacity, 0), 1) }
+      : {}),
+    ...(typeof value.borderWidth === 'number' && Number.isFinite(value.borderWidth)
+      ? { borderWidth: Math.min(Math.max(value.borderWidth, 0), 12) }
+      : {}),
+    ...(typeof value.borderColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.borderColor)
+      ? { borderColor: value.borderColor }
+      : {}),
+    ...(value.shadow === false ? { shadow: false } : {}),
+    ...(value.hideTitle === true ? { hideTitle: true } : {}),
     position: getLegacyWidgetPosition(value, index),
   };
 

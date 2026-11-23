@@ -361,7 +361,6 @@
   aspect-ratio: 1 / 1;
   margin: 0 auto;
   border-radius: clamp(10px, calc(var(--links-tile-size, 84px) * 0.18), 20px);
-  border: 1px solid var(--border);
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   transition: background var(--transition-fast), transform var(--transition-fast);
 }
