@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Widget, WidgetType } from '@shared/types';
 import { createWidget } from '@shared/storage/widgets';
-import { X, ExternalLink, LayoutGrid, Clock, CloudSun, CheckSquare } from 'lucide-preact';
+import { X, ExternalLink, LayoutGrid, Clock, CloudSun, CheckSquare, Grid2x2, List } from 'lucide-preact';
 import type { LucideIcon } from 'lucide-preact';
 import { CityAutocomplete } from '../ui/CityAutocomplete';
 import { useI18n } from '@shared/i18n';
-import { uiButtonPrimaryClass, uiButtonSecondaryClass, uiFieldClass, uiIconButtonClass, uiInputClass, uiLabelClass } from '@shared/ui/classes';
+import { uiButtonPrimaryClass, uiButtonSecondaryClass, uiFieldClass, uiIconButtonClass, uiInputClass, uiLabelClass, uiSelectClass } from '@shared/ui/classes';
 
 interface WidgetEditorProps {
   widget?: Widget | null;
@@ -32,6 +32,15 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
   const [city, setCity] = useState((widget?.type === 'weather' && widget.city) || '');
   const [timezone, setTimezone] = useState((widget?.type === 'clock' && widget.timezone) || '');
   const [label, setLabel] = useState((widget?.type === 'clock' && widget.label) || '');
+  const [linksDisplay, setLinksDisplay] = useState<'list' | 'icons'>(
+    (widget?.type === 'links' && widget.display) || 'list'
+  );
+  const [iconColumns, setIconColumns] = useState<number>(
+    (widget?.type === 'links' && widget.iconColumns) || 3
+  );
+  const [iconSize, setIconSize] = useState<number>(
+    (widget?.type === 'links' && widget.iconSize) || 28
+  );
 
   useEffect(() => {
     if (type !== 'weather') return;
@@ -70,6 +79,11 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
     if (updated.type === 'clock') {
       (updated as typeof updated & { timezone?: string; label?: string }).timezone = timezone.trim() || undefined;
       (updated as typeof updated & { timezone?: string; label?: string }).label = label.trim() || undefined;
+    }
+    if (updated.type === 'links') {
+      updated.display = linksDisplay;
+      updated.iconColumns = linksDisplay === 'icons' ? iconColumns : undefined;
+      updated.iconSize = linksDisplay === 'icons' ? iconSize : undefined;
     }
     onSave(updated);
   };
@@ -134,6 +148,60 @@ export function WidgetEditor({ widget, linksOnly = false, onSave, onClose }: Wid
               </label>
             )}
           </div>
+
+          {type === 'links' && (
+            <div className="widget-editor__section">
+              <label className="widget-editor__label">{t('widgetEditor.layout')}</label>
+              <div className="widget-editor__types widget-editor__types--compact">
+                <button
+                  type="button"
+                  className={`widget-editor__type widget-editor__type--layout ${linksDisplay === 'list' ? 'widget-editor__type--active' : ''}`}
+                  onClick={() => setLinksDisplay('list')}
+                >
+                  <List size={18} strokeWidth={2} />
+                  <span>{t('widgetEditor.layoutList')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`widget-editor__type widget-editor__type--layout ${linksDisplay === 'icons' ? 'widget-editor__type--active' : ''}`}
+                  onClick={() => setLinksDisplay('icons')}
+                >
+                  <Grid2x2 size={18} strokeWidth={2} />
+                  <span>{t('widgetEditor.layoutIcons')}</span>
+                </button>
+              </div>
+              {linksDisplay === 'icons' && (
+                <>
+                  <label className={`${uiFieldClass} widget-editor__field widget-editor__field--small widget-editor__icon-columns`}>
+                    <span className={uiLabelClass}>{t('widgetEditor.iconColumns')}</span>
+                    <select
+                      value={iconColumns}
+                      onChange={(e) => setIconColumns(Number((e.target as HTMLSelectElement).value))}
+                      className={uiSelectClass}
+                    >
+                      {[2, 3, 4, 5, 6].map((value) => (
+                        <option key={value} value={value}>{value}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={`${uiFieldClass} widget-editor__field widget-editor__icon-columns`}>
+                    <span className={uiLabelClass}>{t('widgetEditor.iconSize')}</span>
+                    <div className="widget-editor__slider">
+                      <input
+                        type="range"
+                        min={16}
+                        max={56}
+                        step={2}
+                        value={iconSize}
+                        onChange={(e) => setIconSize(Number((e.target as HTMLInputElement).value))}
+                      />
+                      <span className="widget-editor__slider-value">{iconSize}px</span>
+                    </div>
+                  </label>
+                </>
+              )}
+            </div>
+          )}
 
           {type === 'weather' && (
             <label className={`${uiFieldClass} widget-editor__field`}>

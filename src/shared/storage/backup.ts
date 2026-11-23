@@ -48,6 +48,9 @@ export type TemplateWidget =
       groups?: { title: string }[];
       /** Ordem efetiva das entradas de topo (links soltos intercalados com subpastas). */
       topLevel?: TemplateTopLevelEntry[];
+      display?: 'list' | 'icons';
+      iconColumns?: number;
+      iconSize?: number;
     })
   | (TemplateWidgetBase & { type: 'calendar' })
   | (TemplateWidgetBase & { type: 'clock'; timezone?: string; label?: string })
@@ -155,6 +158,13 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
             }
           : {}),
         ...(topLevel.length > 0 ? { topLevel } : {}),
+        ...(widget.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              ...(widget.iconColumns ? { iconColumns: widget.iconColumns } : {}),
+              ...(widget.iconSize ? { iconSize: widget.iconSize } : {}),
+            }
+          : {}),
       };
     }
     case 'calendar':
@@ -298,6 +308,13 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
         type: 'links',
         ...(groups.length > 0 ? { groups } : {}),
         items,
+        ...(widget.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              ...(widget.iconColumns ? { iconColumns: widget.iconColumns } : {}),
+              ...(widget.iconSize ? { iconSize: widget.iconSize } : {}),
+            }
+          : {}),
       };
 
       const entries = resolveTemplateTopLevel(widget.topLevel, items, groups);
@@ -500,6 +517,13 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
         ...(groups.length > 0 ? { groups } : {}),
         items,
         ...(topLevel ? { topLevel } : {}),
+        ...(value.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              iconColumns: asPositiveNumber(value.iconColumns, 3),
+              iconSize: asPositiveNumber(value.iconSize, 28),
+            }
+          : {}),
       };
     }
     case 'calendar':

@@ -35,6 +35,12 @@ export interface LinksWidget extends BaseWidget {
   type: 'links';
   items: LinkItem[];
   groups?: LinkGroup[];
+  /** Layout de exibição: lista com título (padrão) ou grade de ícones. */
+  display?: 'list' | 'icons';
+  /** Quantidade de colunas da grade quando `display` é 'icons'. */
+  iconColumns?: number;
+  /** Tamanho do ícone em pixels quando `display` é 'icons'. */
+  iconSize?: number;
 }
 
 export interface CalendarWidget extends BaseWidget {
