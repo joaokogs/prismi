@@ -10,13 +10,21 @@ import { uiButtonPrimaryClass, uiButtonSecondaryClass, uiFieldClass, uiIconButto
 interface WidgetEditorProps {
   widget?: Widget | null;
   linksOnly?: boolean;
+  initialType?: WidgetType;
   /** Opacidade padrão (do tema), usada quando o widget herda a opacidade. */
   defaultOpacity?: number;
   onSave: (widget: Widget) => void;
   onClose: () => void;
 }
 
-export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72, onSave, onClose }: WidgetEditorProps) {
+export function WidgetEditor({
+  widget,
+  linksOnly = false,
+  initialType,
+  defaultOpacity = 0.72,
+  onSave,
+  onClose
+}: WidgetEditorProps) {
   const { t } = useI18n();
   const isEdit = !!widget;
 
@@ -28,7 +36,7 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
     { type: 'todo', label: t('widgetEditor.todo'), icon: CheckSquare }
   ];
 
-  const [type, setType] = useState<WidgetType>(widget?.type || 'links');
+  const [type, setType] = useState<WidgetType>(widget?.type || initialType || 'links');
   const [title, setTitle] = useState(widget?.title || '');
   const [height, setHeight] = useState<number | ''>(widget?.height ?? '');
   const [city, setCity] = useState((widget?.type === 'weather' && widget.city) || '');
@@ -50,8 +58,21 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
   const [borderWidth, setBorderWidth] = useState<number>(widget?.borderWidth ?? 1);
   const [borderColor, setBorderColor] = useState<string>(widget?.borderColor ?? '#ffffff');
   const [borderColorCustom, setBorderColorCustom] = useState(widget?.borderColor !== undefined);
-  const [hideTitle, setHideTitle] = useState<boolean>(!!widget?.hideTitle);
+  const [holidayColor, setHolidayColor] = useState(
+    (widget?.type === 'calendar' && widget.holidayColor) || '#ef4444'
+  );
+  const [holidayColorCustom, setHolidayColorCustom] = useState(
+    widget?.type === 'calendar' && widget.holidayColor !== undefined
+  );
+  const [hideTitle, setHideTitle] = useState<boolean>(
+    widget ? (widget.hideTitle ?? (widget.type !== 'links' && widget.type !== 'todo')) : false
+  );
   const [shadowEnabled, setShadowEnabled] = useState<boolean>(widget?.shadow !== false);
+
+  useEffect(() => {
+    if (isEdit) return;
+    setHideTitle(type !== 'links' && type !== 'todo');
+  }, [type, isEdit]);
 
   useEffect(() => {
     if (type !== 'weather') return;
@@ -86,7 +107,7 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
       borderWidth,
       borderColor: borderColorCustom ? borderColor : undefined,
       shadow: shadowEnabled ? undefined : false,
-      hideTitle: hideTitle || undefined
+      hideTitle: type === 'todo' ? undefined : hideTitle
     } as Widget;
 
     if (updated.type === 'weather') {
@@ -100,6 +121,11 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
       updated.display = linksDisplay;
       updated.iconColumns = linksDisplay === 'icons' ? iconColumns : undefined;
       updated.iconSize = linksDisplay === 'icons' ? iconSize : undefined;
+    }
+    if (updated.type === 'calendar') {
+      updated.holidayColor = holidayColorCustom && /^#[0-9a-fA-F]{6}$/.test(holidayColor)
+        ? holidayColor
+        : undefined;
     }
     onSave(updated);
   };
@@ -135,37 +161,33 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
           )}
 
           <div className="widget-editor__row">
-            {(linksOnly || (isEdit && (type === 'links' || type === 'todo'))) && (
-              <label className={`${uiFieldClass} widget-editor__field`}>
-                <span className={uiLabelClass}>{t('widgetEditor.title')}</span>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle((e.target as HTMLInputElement).value)}
-                  className={uiInputClass}
-                  placeholder={t('widgetEditor.titlePlaceholder')}
-                />
-              </label>
-            )}
-            {isEdit && (widget?.type === 'links' || widget?.type === 'todo') && (
-              <label className={`${uiFieldClass} widget-editor__field widget-editor__field--small`}>
-                <span className={uiLabelClass}>{t('widgetEditor.height')}</span>
-                <input
-                  type="number"
-                  value={height}
-                  onChange={(e) => {
-                    const val = (e.target as HTMLInputElement).value;
-                    setHeight(val === '' ? '' : Number(val));
-                  }}
-                  className={uiInputClass}
-                  placeholder={t('widgetEditor.auto')}
-                  min={40}
-                />
-              </label>
-            )}
+            <label className={`${uiFieldClass} widget-editor__field`}>
+              <span className={uiLabelClass}>{t('widgetEditor.title')}</span>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle((e.target as HTMLInputElement).value)}
+                className={uiInputClass}
+                placeholder={t('widgetEditor.titlePlaceholder')}
+              />
+            </label>
+            <label className={`${uiFieldClass} widget-editor__field widget-editor__field--small`}>
+              <span className={uiLabelClass}>{t('widgetEditor.height')}</span>
+              <input
+                type="number"
+                value={height}
+                onChange={(e) => {
+                  const val = (e.target as HTMLInputElement).value;
+                  setHeight(val === '' ? '' : Number(val));
+                }}
+                className={uiInputClass}
+                placeholder={t('widgetEditor.auto')}
+                min={40}
+              />
+            </label>
           </div>
 
-          {type === 'links' && (
+          {type !== 'todo' && (
             <label className="widget-editor__check widget-editor__section widget-editor__section--compact">
               <input
                 type="checkbox"
@@ -269,6 +291,50 @@ export function WidgetEditor({ widget, linksOnly = false, defaultOpacity = 0.72,
               <span>{t('widgetEditor.shadow')}</span>
             </label>
           </div>
+
+          {type === 'calendar' && (
+            <div className="widget-editor__section">
+              <label className={`${uiFieldClass} widget-editor__border-color`}>
+                <span className={uiLabelClass}>{t('widgetEditor.holidayColor')}</span>
+                <div className="widget-editor__color-row">
+                  <input
+                    type="color"
+                    value={holidayColor}
+                    aria-label={t('widgetEditor.holidayColor')}
+                    onChange={(e) => {
+                      setHolidayColorCustom(true);
+                      setHolidayColor((e.target as HTMLInputElement).value);
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={holidayColor}
+                    onChange={(e) => {
+                      const value = (e.target as HTMLInputElement).value;
+                      setHolidayColor(value);
+                      if (/^#[0-9a-fA-F]{6}$/.test(value)) setHolidayColorCustom(true);
+                    }}
+                    className={`${uiInputClass} widget-editor__color-hex`}
+                    placeholder="#ef4444"
+                  />
+                  {holidayColorCustom ? (
+                    <button
+                      type="button"
+                      className="widget-editor__inherit"
+                      onClick={() => {
+                        setHolidayColorCustom(false);
+                        setHolidayColor('#ef4444');
+                      }}
+                    >
+                      {t('widgetEditor.holidayColorTheme')}
+                    </button>
+                  ) : (
+                    <span className="widget-editor__border-hint">{t('widgetEditor.holidayColorTheme')}</span>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
 
           {type === 'links' && (
             <div className="widget-editor__section">

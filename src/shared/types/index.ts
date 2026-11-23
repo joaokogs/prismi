@@ -53,8 +53,48 @@ export interface LinksWidget extends BaseWidget {
   iconSize?: number;
 }
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  /** Data local no formato YYYY-MM-DD. */
+  date: string;
+  /** Data final opcional para eventos de vários dias (YYYY-MM-DD). */
+  endDate?: string;
+  allDay?: boolean;
+  /** Horário local no formato HH:mm. */
+  startTime?: string;
+  /** Horário local no formato HH:mm. */
+  endTime?: string;
+  notes?: string;
+  color?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface CalendarWidget extends BaseWidget {
   type: 'calendar';
+  events?: CalendarEvent[];
+  /** Cor de destaque dos feriados. Ausente = usa a cor de perigo do tema. */
+  holidayColor?: string;
+}
+
+export type HolidayLevel = 'national' | 'state' | 'municipal';
+
+export interface Holiday {
+  /** Data local no formato YYYY-MM-DD. */
+  date: string;
+  name: string;
+  level: HolidayLevel;
+}
+
+export interface CalendarLocation {
+  countryCode: string;
+  stateCode?: string;
+  city: string;
+  /** Código IBGE do município, quando disponível. */
+  ibgeCode?: string;
+  source: 'geolocation' | 'manual';
+  updatedAt: number;
 }
 
 export interface ClockWidget extends BaseWidget {
@@ -115,6 +155,8 @@ export interface AppSettings {
   recentSearches?: string[];
   uploadedBackgrounds?: StoredBackground[];
   locale?: string;
+  /** Município usado para exibir feriados locais. */
+  calendarLocation?: CalendarLocation;
 }
 
 export interface UploadedBackground {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Settings, Menu, Plus, Palette } from 'lucide-preact';
-import type { AppData, ThemeConfig, UploadedBackground, Widget, WidgetType, TopWidgetConfig, SearchEngine } from '@shared/types';
+import type { AppData, CalendarEvent, CalendarLocation, ThemeConfig, UploadedBackground, Widget, WidgetType, TopWidgetConfig, SearchEngine } from '@shared/types';
 import { DEFAULT_WALLPAPERS, SEARCH_ENGINES } from '@shared/types/constants';
 import { getDefaultData } from '@shared/types/defaults';
 import { useI18n, setLocale as setI18nLocale } from '@shared/i18n';
@@ -17,6 +17,7 @@ import { createWidget, addWidget, deleteWidget, updateWidget, getWidgetsForBoard
 import { createLink, addLink, deleteLink, updateLink, moveLink, createGroup, addGroup, renameGroup, deleteGroup, moveGroup, reorderGroup, explodeGroupToWidget, absorbWidgetAsGroup } from '@shared/storage/links';
 import type { LinkPlacement } from '@shared/storage/links';
 import { createTodoItem, addTodoItem, deleteTodoItem, updateTodoItem, toggleTodoItem, moveTodoItem } from '@shared/storage/todos';
+import { addCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '@shared/storage/calendar';
 import { exportData, importData } from '@shared/storage/backup';
 import { BoardTabs } from './components/layout/BoardTabs';
 import { WidgetGrid } from './components/widgets/WidgetGrid';
@@ -28,6 +29,7 @@ import { TopInfoWidgets } from './components/layout/TopInfoWidgets';
 import { WidgetToolbar } from './components/settings/WidgetToolbar';
 import { ConfirmDialog } from './components/dialogs/ConfirmDialog';
 import { NewTabDialog } from './components/dialogs/NewTabDialog';
+import { CalendarLocationDialog } from './components/dialogs/CalendarLocationDialog';
 import { ModalDialog } from './components/dialogs/ModalDialog';
 import { SearchBar } from './components/layout/SearchBar';
 import { BookmarkFolderPicker, type BookmarkFolder } from './components/dialogs/BookmarkFolderPicker';
@@ -116,12 +118,14 @@ export function App() {
   const [showBackground, setShowBackground] = useState(false);
   const [showWidgetToolbar, setShowWidgetToolbar] = useState(false);
   const [isAddingWidget, setIsAddingWidget] = useState(false);
+  const [addingWidgetType, setAddingWidgetType] = useState<WidgetType | null>(null);
   const [editingWidget, setEditingWidget] = useState<Widget | null>(null);
   const [addingLinkWidget, setAddingLinkWidget] = useState<Widget | null>(null);
   const [editingLink, setEditingLink] = useState<{ widgetId: string; linkId: string } | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [showNewTabDialog, setShowNewTabDialog] = useState(false);
   const [showBookmarkFolders, setShowBookmarkFolders] = useState(false);
+  const [showCalendarLocation, setShowCalendarLocation] = useState(false);
   const [bookmarkFolders, setBookmarkFolders] = useState<BookmarkFolder[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchEngine, setSearchEngine] = useState<SearchEngine>('google');
@@ -441,6 +445,7 @@ export function App() {
       return addWidget(prev, activeBoardId, widget);
     });
     setIsAddingWidget(false);
+    setAddingWidgetType(null);
   };
 
   const handleStartAddWidget = () => {
@@ -661,6 +666,39 @@ export function App() {
     });
   };
 
+  const handleAddCalendarEvent = (widgetId: string, event: CalendarEvent) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return addCalendarEvent(prev, activeBoardId, widgetId, event);
+    });
+  };
+
+  const handleUpdateCalendarEvent = (
+    widgetId: string,
+    eventId: string,
+    updates: Partial<CalendarEvent>
+  ) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return updateCalendarEvent(prev, activeBoardId, widgetId, eventId, updates);
+    });
+  };
+
+  const handleDeleteCalendarEvent = (widgetId: string, eventId: string) => {
+    if (!activeBoardId) return;
+    setData((prev) => {
+      if (!prev || !activeBoardId) return prev;
+      return deleteCalendarEvent(prev, activeBoardId, widgetId, eventId);
+    });
+  };
+
+  const handleCalendarLocationChange = (location: CalendarLocation) => {
+    setData((prev) => (prev ? updateSettings(prev, { calendarLocation: location }) : prev));
+    setShowCalendarLocation(false);
+  };
+
   const editingLinkData = useMemo(() => {
     if (!editingLink || !data || !activeBoardId) return null;
     const widget = data.workspaces
@@ -699,11 +737,8 @@ export function App() {
 
   const handleAddWidgetFromToolbar = (type: WidgetType) => {
     if (!activeBoardId) return;
-    const widget = createWidget(type, '');
-    setData((prev) => {
-      if (!prev || !activeBoardId) return prev;
-      return addWidget(prev, activeBoardId, widget);
-    });
+    setShowWidgetToolbar(false);
+    setAddingWidgetType(type);
   };
 
   const handleToolbarCityChange = (city: string) => {
@@ -730,7 +765,8 @@ export function App() {
               ...data.settings,
               themeConfig: imported.theme,
               topWidgets: imported.data.settings.topWidgets,
-              lastBoardId: imported.data.settings.lastBoardId
+              lastBoardId: imported.data.settings.lastBoardId,
+              calendarLocation: imported.data.settings.calendarLocation ?? data.settings.calendarLocation
             }
           }
         : imported.data;
@@ -954,6 +990,11 @@ export function App() {
             onUpdateTodo={handleUpdateTodo}
             onDeleteTodo={handleDeleteTodo}
             onMoveTodo={handleMoveTodo}
+            calendarLocation={data.settings.calendarLocation}
+            onEditCalendarLocation={() => setShowCalendarLocation(true)}
+            onAddCalendarEvent={handleAddCalendarEvent}
+            onUpdateCalendarEvent={handleUpdateCalendarEvent}
+            onDeleteCalendarEvent={handleDeleteCalendarEvent}
             isEditing={editModeEnabled && !searchQuery.trim()}
           />
         )}
@@ -965,6 +1006,15 @@ export function App() {
           defaultOpacity={themeConfig.boardOpacity}
           onSave={handleAddWidget}
           onClose={() => setIsAddingWidget(false)}
+        />
+      )}
+
+      {addingWidgetType && (
+        <WidgetEditor
+          initialType={addingWidgetType}
+          defaultOpacity={themeConfig.boardOpacity}
+          onSave={handleAddWidget}
+          onClose={() => setAddingWidgetType(null)}
         />
       )}
 
@@ -1063,6 +1113,13 @@ export function App() {
         confirmLabel={confirmState?.confirmLabel}
         onConfirm={confirmState?.onConfirm || (() => {})}
         onCancel={() => setConfirmState(null)}
+      />
+
+      <CalendarLocationDialog
+        open={showCalendarLocation}
+        location={data.settings.calendarLocation}
+        onSave={handleCalendarLocationChange}
+        onClose={() => setShowCalendarLocation(false)}
       />
     </div>
   );

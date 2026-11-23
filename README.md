@@ -84,7 +84,7 @@ Prismi compatible on desktop Firefox, Chrome, Edge, Brave, and most Chromium-bas
 
 ## Privacy
 
-Prismi is free and private by design: no ads, tracking, accounts, subscriptions, or feature caps. It works fully offline, and your saved data remains under your control, stored locally in your browser, and can be exported.
+Prismi is free and private by design: no ads, tracking, accounts, subscriptions, or feature caps. Your saved data remains under your control, stored locally in your browser, and can be exported. Core features work offline; optional features such as weather and municipal holidays call public APIs when used.
 
 Read the full [Privacy Policy](docs/PRIVACY.md).
 

@@ -1,4 +1,4 @@
-import type { AppData, Board, LinkGroup, LinkItem, LinksWidget, ThemeConfig, TopWidgetConfig, Widget } from '@shared/types';
+import type { AppData, Board, CalendarEvent, CalendarLocation, LinkGroup, LinkItem, LinksWidget, ThemeConfig, TopWidgetConfig, Widget } from '@shared/types';
 import { t } from '@shared/i18n';
 import { DEFAULT_THEME } from '@shared/types/constants';
 import { generateId, generateWorkspaceId, getDefaultData } from '@shared/types/defaults';
@@ -45,6 +45,17 @@ interface TemplateWidgetBase {
   position: TemplateWidgetPosition;
 }
 
+interface TemplateCalendarEvent {
+  title: string;
+  date: string;
+  endDate?: string;
+  allDay?: boolean;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+  color?: string;
+}
+
 export type TemplateWidget =
   | (TemplateWidgetBase & {
       type: 'links';
@@ -57,7 +68,7 @@ export type TemplateWidget =
       iconColumns?: number;
       iconSize?: number;
     })
-  | (TemplateWidgetBase & { type: 'calendar' })
+  | (TemplateWidgetBase & { type: 'calendar'; events?: TemplateCalendarEvent[]; holidayColor?: string })
   | (TemplateWidgetBase & { type: 'clock'; timezone?: string; label?: string })
   | (TemplateWidgetBase & { type: 'weather'; city?: string })
   | (TemplateWidgetBase & { type: 'todo'; items: { text: string; done: boolean }[] });
@@ -74,6 +85,7 @@ export interface TemplateData {
   headerWidgets?: TopWidgetConfig[];
   theme: TemplateTheme;
   boards: TemplateBoard[];
+  calendarLocation?: CalendarLocation;
 }
 
 export interface ImportResult {
@@ -178,7 +190,25 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
       };
     }
     case 'calendar':
-      return { ...base, type: 'calendar' };
+      return {
+        ...base,
+        type: 'calendar',
+        ...(widget.events?.length
+          ? {
+              events: widget.events.map((event) => ({
+                title: event.title,
+                date: event.date,
+                ...(event.endDate ? { endDate: event.endDate } : {}),
+                ...(event.allDay !== undefined ? { allDay: event.allDay } : {}),
+                ...(event.startTime ? { startTime: event.startTime } : {}),
+                ...(event.endTime ? { endTime: event.endTime } : {}),
+                ...(event.notes ? { notes: event.notes } : {}),
+                ...(event.color ? { color: event.color } : {})
+              }))
+            }
+          : {}),
+        ...(widget.holidayColor ? { holidayColor: widget.holidayColor } : {})
+      };
     case 'clock':
       return {
         ...base,
@@ -211,6 +241,7 @@ export function createTemplate(data: AppData, theme: Pick<ThemeConfig, 'primaryC
       boardOpacity: theme.boardOpacity,
       boardBlur: theme.boardBlur
     },
+    ...(data.settings.calendarLocation ? { calendarLocation: data.settings.calendarLocation } : {}),
     boards: boards.map((board) => {
       const positions = getWidgetPositions(board.widgets, columns);
       return {
@@ -337,7 +368,28 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
       return normalizeTopLevelOrder(applyTopLevelEntryOrder(linksWidget, entries));
     }
     case 'calendar':
-      return { ...base, type: 'calendar' };
+      return {
+        ...base,
+        type: 'calendar',
+        ...(widget.events?.length
+          ? {
+              events: widget.events.map((event): CalendarEvent => ({
+                id: generateId('event'),
+                title: event.title,
+                date: event.date,
+                ...(event.endDate ? { endDate: event.endDate } : {}),
+                ...(event.allDay !== undefined ? { allDay: event.allDay } : {}),
+                ...(event.startTime ? { startTime: event.startTime } : {}),
+                ...(event.endTime ? { endTime: event.endTime } : {}),
+                ...(event.notes ? { notes: event.notes } : {}),
+                ...(event.color ? { color: event.color } : {}),
+                createdAt: now,
+                updatedAt: now
+              }))
+            }
+          : {}),
+        ...(widget.holidayColor ? { holidayColor: widget.holidayColor } : {})
+      };
     case 'clock':
       return {
         ...base,
@@ -381,6 +433,28 @@ function normalizeTheme(value: unknown): TemplateTheme {
     boardBlur: typeof theme.boardBlur === 'number' && Number.isFinite(theme.boardBlur)
       ? Math.max(theme.boardBlur, 0)
       : DEFAULT_THEME.boardBlur,
+  };
+}
+
+function normalizeCalendarLocation(value: unknown): CalendarLocation | undefined {
+  if (!isRecord(value)) return undefined;
+  const countryCode = typeof value.countryCode === 'string' ? value.countryCode.toUpperCase() : '';
+  const city = typeof value.city === 'string' ? value.city.trim() : '';
+  if (!countryCode || !city) return undefined;
+
+  return {
+    countryCode,
+    city,
+    ...(typeof value.stateCode === 'string' && value.stateCode.trim()
+      ? { stateCode: value.stateCode.toUpperCase() }
+      : {}),
+    ...(value.ibgeCode !== undefined && value.ibgeCode !== null
+      ? { ibgeCode: String(value.ibgeCode) }
+      : {}),
+    source: value.source === 'manual' ? 'manual' : 'geolocation',
+    updatedAt: typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
+      ? value.updatedAt
+      : Date.now()
   };
 }
 
@@ -478,6 +552,29 @@ function normalizeTemplateTopLevel(
   return entries.length > 0 ? entries : undefined;
 }
 
+function normalizeTemplateCalendarEvents(value: unknown): TemplateCalendarEvent[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const events: TemplateCalendarEvent[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+    const date = typeof entry.date === 'string' ? entry.date : '';
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+    const event: TemplateCalendarEvent = { title, date };
+    if (typeof entry.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(entry.endDate)) event.endDate = entry.endDate;
+    if (entry.allDay !== undefined) event.allDay = !!entry.allDay;
+    if (typeof entry.startTime === 'string') event.startTime = entry.startTime;
+    if (typeof entry.endTime === 'string') event.endTime = entry.endTime;
+    if (typeof entry.notes === 'string' && entry.notes.trim()) event.notes = entry.notes;
+    if (typeof entry.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(entry.color)) event.color = entry.color;
+    events.push(event);
+  }
+
+  return events.length > 0 ? events : undefined;
+}
+
 function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget | null {
   if (!isRecord(value)) return null;
 
@@ -552,8 +649,18 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
           : {}),
       };
     }
-    case 'calendar':
-      return { ...base, type };
+    case 'calendar': {
+      const events = normalizeTemplateCalendarEvents(value.events);
+      const holidayColor = typeof value.holidayColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.holidayColor)
+        ? value.holidayColor
+        : undefined;
+      return {
+        ...base,
+        type,
+        ...(events ? { events } : {}),
+        ...(holidayColor ? { holidayColor } : {})
+      };
+    }
     case 'clock':
       return {
         ...base,
@@ -615,12 +722,15 @@ function normalizeTemplate(value: unknown): TemplateData {
     };
   });
 
+  const calendarLocation = normalizeCalendarLocation(value.calendarLocation);
+
   return {
     format: 'prismi-template',
     version: 5,
     columns,
     theme: normalizeTheme(value.theme),
     ...(normalizeTopWidgets(value.headerWidgets ?? value.topWidgets) ? { headerWidgets: normalizeTopWidgets(value.headerWidgets ?? value.topWidgets) } : {}),
+    ...(calendarLocation ? { calendarLocation } : {}),
     boards,
   };
 }
@@ -651,7 +761,8 @@ function importTemplate(template: TemplateData): ImportResult {
         ...defaults.settings,
         themeConfig: template.theme,
         topWidgets: template.headerWidgets ?? defaults.settings.topWidgets,
-        lastBoardId: importedWorkspaces[0].id
+        lastBoardId: importedWorkspaces[0].id,
+        ...(template.calendarLocation ? { calendarLocation: template.calendarLocation } : {})
       },
       installedAt: now
     },

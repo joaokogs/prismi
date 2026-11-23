@@ -1,4 +1,4 @@
-import type { AppData, Board, LinkGroup, LinkItem, LinksWidget, TodoItem, TopWidgetConfig, Widget, Workspace } from '@shared/types';
+import type { AppData, Board, CalendarEvent, LinkGroup, LinkItem, LinksWidget, TodoItem, TopWidgetConfig, Widget, Workspace } from '@shared/types';
 import { generateId, generateWorkspaceId } from '@shared/types/defaults';
 import { normalizeTopLevelOrder } from '@shared/utils/linkOrder';
 
@@ -143,7 +143,55 @@ function migrateWidget(widget: Widget, fallback: number, usedWidgetIds: Set<stri
     };
   }
 
+  if (widget.type === 'calendar') {
+    const rawHolidayColor = (widget as { holidayColor?: unknown }).holidayColor;
+    const holidayColor = typeof rawHolidayColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(rawHolidayColor)
+      ? rawHolidayColor
+      : undefined;
+    return {
+      ...base,
+      type: 'calendar',
+      events: normalizeCalendarEvents((widget as { events?: unknown }).events, fallback),
+      holidayColor
+    };
+  }
+
   return base;
+}
+
+function normalizeCalendarEvents(value: unknown, fallback: number): CalendarEvent[] {
+  if (!Array.isArray(value)) return [];
+
+  const events: CalendarEvent[] = [];
+  const usedIds = new Set<string>();
+
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const candidate = entry as Partial<CalendarEvent> & { title?: unknown; date?: unknown };
+    if (typeof candidate.title !== 'string' || typeof candidate.date !== 'string') continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate.date)) continue;
+
+    const event: CalendarEvent = {
+      id: getUniqueId(candidate.id, 'event', usedIds),
+      title: candidate.title.trim(),
+      date: candidate.date,
+      createdAt: getTimestamp(candidate.createdAt, fallback),
+      updatedAt: getTimestamp(candidate.updatedAt, fallback),
+    };
+
+    if (typeof candidate.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(candidate.endDate)) {
+      event.endDate = candidate.endDate;
+    }
+    if (candidate.allDay !== undefined) event.allDay = !!candidate.allDay;
+    if (typeof candidate.startTime === 'string') event.startTime = candidate.startTime;
+    if (typeof candidate.endTime === 'string') event.endTime = candidate.endTime;
+    if (typeof candidate.notes === 'string') event.notes = candidate.notes;
+    if (typeof candidate.color === 'string') event.color = candidate.color;
+
+    events.push(event);
+  }
+
+  return events;
 }
 
 function migrateItem<T extends LinkItem | TodoItem>(

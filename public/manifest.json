@@ -16,7 +16,8 @@
     "tabs",
     "storage",
     "activeTab",
-    "bookmarks"
+    "bookmarks",
+    "geolocation"
   ],
   "host_permissions": [
     "*://www.google.com/",
@@ -25,7 +26,9 @@
     "*://geocoding-api.open-meteo.com/*",
     "*://api.bigdatacloud.net/*",
     "*://api.bing.com/*",
-    "*://duckduckgo.com/*"
+    "*://duckduckgo.com/*",
+    "*://servicodados.ibge.gov.br/*",
+    "*://raw.githubusercontent.com/*"
   ],
   "chrome_url_overrides": {
     "newtab": "newtab.html"
@@ -43,7 +46,8 @@
       "id": "luma-dashboard@luma-extension.io",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": ["none"],
+        "optional": ["locationInfo"]
       }
     }
   },

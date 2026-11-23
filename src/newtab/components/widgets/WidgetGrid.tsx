@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo } from 'preact/hooks';
-import type { Widget } from '@shared/types';
+import type { CalendarEvent, CalendarLocation, Widget } from '@shared/types';
 import { useI18n } from '@shared/i18n';
 import { WidgetCard } from './WidgetCard';
 import { LinksWidgetView } from './LinksWidget';
@@ -47,6 +47,11 @@ interface WidgetGridProps {
   onUpdateTodo?: (widgetId: string, todoId: string, text: string) => void;
   onDeleteTodo?: (widgetId: string, todoId: string) => void;
   onMoveTodo?: (fromWidgetId: string, toWidgetId: string, todoId: string, toIndex: number) => void;
+  calendarLocation?: CalendarLocation;
+  onEditCalendarLocation?: () => void;
+  onAddCalendarEvent?: (widgetId: string, event: CalendarEvent) => void;
+  onUpdateCalendarEvent?: (widgetId: string, eventId: string, updates: Partial<CalendarEvent>) => void;
+  onDeleteCalendarEvent?: (widgetId: string, eventId: string) => void;
   isEditing?: boolean;
 }
 
@@ -92,6 +97,11 @@ export function WidgetGrid({
   onUpdateTodo,
   onDeleteTodo,
   onMoveTodo,
+  calendarLocation,
+  onEditCalendarLocation,
+  onAddCalendarEvent,
+  onUpdateCalendarEvent,
+  onDeleteCalendarEvent,
   isEditing = true
 }: WidgetGridProps) {
   const { t } = useI18n();
@@ -497,7 +507,7 @@ export function WidgetGrid({
                   onDelete={isEditing ? () => onDeleteWidget(widget.id) : undefined}
                   onAddLink={isEditing && widget.type === 'links' && onAddLink ? () => onAddLink(widget) : undefined}
                   onAddGroup={isEditing && widget.type === 'links' && onAddGroup ? () => onAddGroup(widget) : undefined}
-                  onResize={isEditing && onResizeWidget && (widget.type === 'links' || widget.type === 'todo') ? (h) => onResizeWidget(widget.id, h) : undefined}
+                  onResize={isEditing && onResizeWidget ? (h) => onResizeWidget(widget.id, h) : undefined}
                 >
                   <WidgetContent
                     widget={widget}
@@ -524,6 +534,11 @@ export function WidgetGrid({
                     onTodoDragStart={(e, todoId) => handleTodoDragStart(e, todoId, widget.id)}
                     onTodoDragEnd={handleTodoDragEnd}
                     onTodoDrop={(widgetId, targetTodoId, position) => handleTodoDrop(widgetId, targetTodoId, position)}
+                    calendarLocation={calendarLocation}
+                    onEditCalendarLocation={onEditCalendarLocation}
+                    onAddCalendarEvent={onAddCalendarEvent ? (event) => onAddCalendarEvent(widget.id, event) : undefined}
+                    onUpdateCalendarEvent={onUpdateCalendarEvent ? (eventId, updates) => onUpdateCalendarEvent(widget.id, eventId, updates) : undefined}
+                    onDeleteCalendarEvent={onDeleteCalendarEvent ? (eventId) => onDeleteCalendarEvent(widget.id, eventId) : undefined}
                   />
                 </WidgetCard>
                 {isTarget && drag.position === 'after' && <DropIndicator />}
@@ -574,7 +589,12 @@ function WidgetContent({
   todoDrag,
   onTodoDragStart,
   onTodoDragEnd,
-  onTodoDrop
+  onTodoDrop,
+  calendarLocation,
+  onEditCalendarLocation,
+  onAddCalendarEvent,
+  onUpdateCalendarEvent,
+  onDeleteCalendarEvent
 }: {
   widget: Widget;
   linkDrag: LinkDragState;
@@ -605,6 +625,11 @@ function WidgetContent({
   onTodoDragStart?: (e: DragEvent, todoId: string, widgetId: string) => void;
   onTodoDragEnd?: () => void;
   onTodoDrop?: (widgetId: string, targetTodoId: string | null, position: 'before' | 'after') => void;
+  calendarLocation?: CalendarLocation;
+  onEditCalendarLocation?: () => void;
+  onAddCalendarEvent?: (event: CalendarEvent) => void;
+  onUpdateCalendarEvent?: (eventId: string, updates: Partial<CalendarEvent>) => void;
+  onDeleteCalendarEvent?: (eventId: string) => void;
 }) {
   switch (widget.type) {
     case 'links':
@@ -629,7 +654,16 @@ function WidgetContent({
         />
       );
     case 'calendar':
-      return <CalendarWidgetView />;
+      return (
+        <CalendarWidgetView
+          widget={widget}
+          location={calendarLocation}
+          onEditLocation={onEditCalendarLocation}
+          onAddEvent={onAddCalendarEvent}
+          onUpdateEvent={onUpdateCalendarEvent}
+          onDeleteEvent={onDeleteCalendarEvent}
+        />
+      );
     case 'clock':
       return <ClockWidgetView timezone={widget.timezone} label={widget.label} />;
     case 'weather':

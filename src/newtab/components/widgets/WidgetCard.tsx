@@ -156,7 +156,9 @@ export function WidgetCard({
     cardStyle.flexShrink = 0;
   }
 
-  const hideTitle = widget.type !== 'links' || !!widget.hideTitle;
+  const hideTitle = widget.type === 'todo'
+    ? true
+    : widget.hideTitle ?? widget.type !== 'links';
   const isTransparent = widget.opacity === 0;
 
   return (
@@ -175,9 +177,9 @@ export function WidgetCard({
       style={Object.keys(cardStyle).length > 0 ? (cardStyle as CSSProperties) : undefined}
     >
       <div className={`widget-card__header ${hideTitle ? 'widget-card__header--actions-only' : ''}`}>
-          {widget.type === 'links' && !widget.hideTitle && (
+          {!hideTitle && widget.type !== 'todo' && (
             <div className="widget-card__title-row">
-            <h3 className="widget-card__title">{widget.title}</h3>
+              <h3 className="widget-card__title">{widget.title}</h3>
             </div>
           )}
           {(onEdit || onDelete || onAddLink || onAddGroup) && (
@@ -215,7 +217,7 @@ export function WidgetCard({
                       {t('widgetCard.addLink')}
                     </button>
                   )}
-                  {onEdit && widget.type !== 'clock' && widget.type !== 'calendar' && (
+                  {onEdit && (
                     <button
                       className="widget-card__menu-item"
                       onClick={handleAction(onEdit)}
