@@ -37,6 +37,11 @@ interface TemplateWidgetBase {
   title: string;
   colSpan: number;
   height?: number;
+  opacity?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  shadow?: boolean;
+  hideTitle?: boolean;
   position: TemplateWidgetPosition;
 }
 
@@ -48,6 +53,9 @@ export type TemplateWidget =
       groups?: { title: string }[];
       /** Ordem efetiva das entradas de topo (links soltos intercalados com subpastas). */
       topLevel?: TemplateTopLevelEntry[];
+      display?: 'list' | 'icons';
+      iconColumns?: number;
+      iconSize?: number;
     })
   | (TemplateWidgetBase & { type: 'calendar' })
   | (TemplateWidgetBase & { type: 'clock'; timezone?: string; label?: string })
@@ -116,6 +124,11 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
     title: widget.title,
     colSpan: widget.colSpan,
     ...(widget.height !== undefined ? { height: widget.height } : {}),
+    ...(widget.opacity !== undefined ? { opacity: widget.opacity } : {}),
+    ...(widget.borderWidth !== undefined ? { borderWidth: widget.borderWidth } : {}),
+    ...(widget.borderColor ? { borderColor: widget.borderColor } : {}),
+    ...(widget.shadow === false ? { shadow: false } : {}),
+    ...(widget.hideTitle ? { hideTitle: true } : {}),
     position
   };
 
@@ -155,6 +168,13 @@ function serializeWidget(widget: Widget, position: TemplateWidgetPosition): Temp
             }
           : {}),
         ...(topLevel.length > 0 ? { topLevel } : {}),
+        ...(widget.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              ...(widget.iconColumns ? { iconColumns: widget.iconColumns } : {}),
+              ...(widget.iconSize ? { iconSize: widget.iconSize } : {}),
+            }
+          : {}),
       };
     }
     case 'calendar':
@@ -269,6 +289,11 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
     colSpan: widget.colSpan,
     order: position.row,
     ...(widget.height !== undefined ? { height: widget.height } : {}),
+    ...(widget.opacity !== undefined ? { opacity: widget.opacity } : {}),
+    ...(widget.borderWidth !== undefined ? { borderWidth: widget.borderWidth } : {}),
+    ...(widget.borderColor ? { borderColor: widget.borderColor } : {}),
+    ...(widget.shadow === false ? { shadow: false } : {}),
+    ...(widget.hideTitle ? { hideTitle: true } : {}),
     col: position.column,
     layoutColumns: columns
   };
@@ -298,6 +323,13 @@ function deserializeWidget(widget: TemplateWidget, position: TemplateWidgetPosit
         type: 'links',
         ...(groups.length > 0 ? { groups } : {}),
         items,
+        ...(widget.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              ...(widget.iconColumns ? { iconColumns: widget.iconColumns } : {}),
+              ...(widget.iconSize ? { iconSize: widget.iconSize } : {}),
+            }
+          : {}),
       };
 
       const entries = resolveTemplateTopLevel(widget.topLevel, items, groups);
@@ -456,6 +488,17 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
     title: asString(value.title, t(`defaults.${type === 'todo' ? 'todoWidget' : `${type}Widget`}`)),
     colSpan: asPositiveNumber(value.colSpan, 1),
     ...(typeof value.height === 'number' && Number.isFinite(value.height) && value.height > 0 ? { height: value.height } : {}),
+    ...(typeof value.opacity === 'number' && Number.isFinite(value.opacity)
+      ? { opacity: Math.min(Math.max(value.opacity, 0), 1) }
+      : {}),
+    ...(typeof value.borderWidth === 'number' && Number.isFinite(value.borderWidth)
+      ? { borderWidth: Math.min(Math.max(value.borderWidth, 0), 12) }
+      : {}),
+    ...(typeof value.borderColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.borderColor)
+      ? { borderColor: value.borderColor }
+      : {}),
+    ...(value.shadow === false ? { shadow: false } : {}),
+    ...(value.hideTitle === true ? { hideTitle: true } : {}),
     position: getLegacyWidgetPosition(value, index),
   };
 
@@ -500,6 +543,13 @@ function normalizeTemplateWidget(value: unknown, index: number): TemplateWidget 
         ...(groups.length > 0 ? { groups } : {}),
         items,
         ...(topLevel ? { topLevel } : {}),
+        ...(value.display === 'icons'
+          ? {
+              display: 'icons' as const,
+              iconColumns: asPositiveNumber(value.iconColumns, 3),
+              iconSize: asPositiveNumber(value.iconSize, 28),
+            }
+          : {}),
       };
     }
     case 'calendar':

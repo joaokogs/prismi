@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import type { CSSProperties } from 'preact/compat';
 import type { Widget } from '@shared/types';
 import { MoreVertical, Plus, Pencil, Trash2, FolderPlus } from 'lucide-preact';
 import { useI18n } from '@shared/i18n';
@@ -76,7 +77,7 @@ export function WidgetCard({
     const onMouseMove = (e: MouseEvent) => {
       e.preventDefault();
       const diff = e.clientY - resizeStart.current.y;
-      setTempHeight(Math.max(120, resizeStart.current.baseHeight + diff));
+      setTempHeight(Math.max(40, resizeStart.current.baseHeight + diff));
     };
 
     const onMouseUp = () => {
@@ -136,10 +137,33 @@ export function WidgetCard({
     fn?.();
   };
 
+  const cardStyle: Record<string, string | number> = {};
+  if (widget.opacity !== undefined) {
+    cardStyle['--widget-opacity'] = widget.opacity;
+  }
+  if (widget.borderWidth !== undefined) {
+    cardStyle['--widget-border-width'] = `${widget.borderWidth}px`;
+  }
+  if (widget.borderColor) {
+    cardStyle['--widget-border-color'] = widget.borderColor;
+  }
+  if (widget.shadow === false) {
+    cardStyle['--widget-shadow'] = 'none';
+  }
+  const renderedHeight = tempHeight !== undefined ? tempHeight : widget.height;
+  if (renderedHeight !== undefined) {
+    cardStyle.height = renderedHeight;
+    cardStyle.flexShrink = 0;
+  }
+
+  const hideTitle = widget.type !== 'links' || !!widget.hideTitle;
+  const isTransparent = widget.opacity === 0;
+
   return (
     <div
       ref={cardRef}
-      className={`widget-card ${widget.colSpan > 1 ? 'widget-card--wide' : ''} ${isDragging ? 'widget-card--dragging' : ''} ${widget.height ? 'widget-card--fixed-height' : ''} ${isResizing ? 'widget-card--resizing' : ''} ${dropHint === 'into' ? 'widget-card--drop-into' : ''} ${dropHint === 'group' ? 'widget-card--drop-group' : ''} ${className}`}
+      className={`widget-card ${widget.colSpan > 1 ? 'widget-card--wide' : ''} ${isDragging ? 'widget-card--dragging' : ''} ${widget.height ? 'widget-card--fixed-height' : ''} ${isResizing ? 'widget-card--resizing' : ''} ${dropHint === 'into' ? 'widget-card--drop-into' : ''} ${dropHint === 'group' ? 'widget-card--drop-group' : ''} ${isTransparent ? 'widget-card--transparent' : ''} ${className}`}
+      data-borderless={widget.borderWidth === 0 ? 'true' : undefined}
       draggable={!!onDragStart && !isResizing}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -148,10 +172,10 @@ export function WidgetCard({
       onContextMenu={handleContextMenu}
       data-widget-id={widget.id}
       data-col-span={widget.colSpan}
-      style={tempHeight !== undefined ? { height: tempHeight, flexShrink: 0 } : widget.height ? { height: widget.height, flexShrink: 0 } : undefined}
+      style={Object.keys(cardStyle).length > 0 ? (cardStyle as CSSProperties) : undefined}
     >
-      <div className={`widget-card__header ${widget.type !== 'links' ? 'widget-card__header--actions-only' : ''}`}>
-          {widget.type === 'links' && (
+      <div className={`widget-card__header ${hideTitle ? 'widget-card__header--actions-only' : ''}`}>
+          {widget.type === 'links' && !widget.hideTitle && (
             <div className="widget-card__title-row">
             <h3 className="widget-card__title">{widget.title}</h3>
             </div>

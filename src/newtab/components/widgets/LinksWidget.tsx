@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '@shared/i18n';
 import { createPortal } from 'preact/compat';
+import type { CSSProperties } from 'preact/compat';
 import type { LinkGroup, LinkItem, LinksWidget } from '@shared/types';
 import { getFaviconUrl } from '@shared/utils/url';
 import { getTopLevelEntries } from '@shared/utils/linkOrder';
@@ -117,6 +118,19 @@ export function LinksWidgetView({
 
   const isGroupReorderDrag = !!groupDrag?.groupId && groupDrag.fromWidgetId === widget.id;
 
+  const iconMode = widget.display === 'icons';
+  const iconSize = Math.max(16, Math.min(56, widget.iconSize ?? 28));
+  const iconTileSize = Math.max(44, Math.min(160, Math.round(iconSize * 3)));
+  const iconColumns = Math.max(2, Math.min(6, widget.iconColumns ?? 3));
+  const iconGridStyle = iconMode
+    ? ({
+        gridTemplateColumns: `repeat(${iconColumns}, min(${iconTileSize}px, calc((100% - ${(iconColumns - 1) * 10}px) / ${iconColumns})))`,
+        '--links-icon-size': `${iconSize}px`,
+        '--links-tile-size': `${iconTileSize}px`,
+      } as CSSProperties)
+    : undefined;
+  const iconListClass = iconMode ? ' links-widget--icons' : '';
+
   const groups = widget.groups ?? [];
   const entries = groups.length > 0 ? getTopLevelEntries(widget) : [];
   const linksById = new Map(widget.items.map((item) => [item.id, item]));
@@ -183,12 +197,38 @@ export function LinksWidgetView({
   const getDropTargetInList = (
     list: HTMLUListElement,
     groupId: string | null,
-    clientY: number
+    clientY: number,
+    clientX: number
   ): DropTarget => {
     const items = Array.from(list.querySelectorAll<HTMLLIElement>('.links-widget__item'));
 
     if (items.length === 0) {
       return { groupId, linkId: null, position: 'after' };
+    }
+
+    // Na grade de ícones o alvo é o cartão mais próximo do cursor, com a
+    // posição definida pelo lado (esquerda = antes, direita = depois).
+    if (iconMode) {
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      items.forEach((item, index) => {
+        const rect = item.getBoundingClientRect();
+        const distance = Math.hypot(
+          clientX - (rect.left + rect.width / 2),
+          clientY - (rect.top + rect.height / 2)
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = index;
+        }
+      });
+      const target = items[bestIndex];
+      const rect = target.getBoundingClientRect();
+      return {
+        groupId,
+        linkId: target.dataset.linkId || null,
+        position: clientX < rect.left + rect.width / 2 ? 'before' : 'after',
+      };
     }
 
     const firstRect = items[0].getBoundingClientRect();
@@ -212,16 +252,16 @@ export function LinksWidgetView({
     return { groupId, linkId: last.dataset.linkId || null, position: 'after' };
   };
 
-  const getDropPosition = (clientY: number): DropTarget | null => {
+  const getDropPosition = (clientY: number, clientX: number): DropTarget | null => {
     if (!listRef.current) return null;
-    return getDropTargetInList(listRef.current, null, clientY);
+    return getDropTargetInList(listRef.current, null, clientY, clientX);
   };
 
   const handleDragOver = (e: DragEvent) => {
     if (groupDrag?.groupId) return;
     e.preventDefault();
     if (!linkDrag.linkId) return;
-    const pos = getDropPosition(e.clientY);
+    const pos = getDropPosition(e.clientY, e.clientX);
     if (pos) setDropTarget(pos);
   };
 
@@ -236,7 +276,7 @@ export function LinksWidgetView({
     if (!onLinkDrop || !linkDrag.linkId) return;
     e.preventDefault();
     e.stopPropagation();
-    const pos = getDropPosition(e.clientY);
+    const pos = getDropPosition(e.clientY, e.clientX);
     if (pos && pos.linkId !== linkDrag.linkId) {
       onLinkDrop(pos.groupId, pos.linkId, pos.position);
     }
@@ -335,7 +375,7 @@ export function LinksWidgetView({
     if (!linkDrag.linkId) return;
     e.preventDefault();
     e.stopPropagation();
-    setDropTarget(getDropTargetInList(list, groupId, e.clientY));
+    setDropTarget(getDropTargetInList(list, groupId, e.clientY, e.clientX));
   };
 
   /**
@@ -378,7 +418,7 @@ export function LinksWidgetView({
     if (!onLinkDrop || !linkDrag.linkId) return;
     e.preventDefault();
     e.stopPropagation();
-    const target = getDropTargetInList(list, groupId, e.clientY);
+    const target = getDropTargetInList(list, groupId, e.clientY, e.clientX);
     if (target.linkId !== linkDrag.linkId) {
       onLinkDrop(target.groupId, target.linkId, target.position);
     }
@@ -494,6 +534,8 @@ export function LinksWidgetView({
       link={link}
       className={getItemDropClasses(link.id)}
       isDragging={linkDrag.linkId === link.id}
+      iconMode={iconMode}
+      iconSize={iconSize}
       openInNewTab={openInNewTab}
       onOpenLink={onOpenLink}
       onDelete={onDeleteLink}
@@ -575,7 +617,8 @@ export function LinksWidgetView({
         <div id={bodyId} className="links-widget__group-body-wrap">
           {!collapsed && (
             <ul
-              className="links-widget links-widget__group-body"
+              className={`links-widget links-widget__group-body${iconListClass}`}
+              style={iconGridStyle}
               onDragOver={(e) => handleGroupDragOver(e, groupId, e.currentTarget as HTMLUListElement)}
               onDrop={(e) => handleGroupDrop(e, groupId, e.currentTarget as HTMLUListElement)}
             >
@@ -598,7 +641,8 @@ export function LinksWidgetView({
     return (
       <ul
         ref={listRef}
-        className={`links-widget${groupDropActive ? ' links-widget--group-drop-target' : ''}`}
+        className={`links-widget${iconListClass}${groupDropActive ? ' links-widget--group-drop-target' : ''}`}
+        style={iconGridStyle}
         onDragOver={(e) => {
           if (groupDrag?.groupId) {
             handleGroupsDragOver(e);
@@ -635,7 +679,8 @@ export function LinksWidgetView({
       onDrop={handleGroupsDrop}
     >
       <ul
-        className="links-widget links-widget__entries"
+        className={`links-widget links-widget__entries${iconListClass}`}
+        style={iconGridStyle}
         onDragOver={handleEntriesDragOver}
         onDrop={handleEntriesDrop}
       >
@@ -649,6 +694,8 @@ export function LinksWidgetView({
                 link={link}
                 className={`links-widget__item links-widget__entry${getGroupSortClasses(entryIndex)}${getEntryDropClasses(entry)}`}
                 isDragging={linkDrag.linkId === link.id}
+                iconMode={iconMode}
+                iconSize={iconSize}
                 openInNewTab={openInNewTab}
                 onOpenLink={onOpenLink}
                 onDelete={onDeleteLink}
@@ -779,6 +826,8 @@ function LinkRow({
   link,
   className,
   isDragging,
+  iconMode = false,
+  iconSize = 28,
   openInNewTab = true,
   onOpenLink,
   onDelete,
@@ -789,6 +838,8 @@ function LinkRow({
   link: LinkItem;
   className?: string;
   isDragging?: boolean;
+  iconMode?: boolean;
+  iconSize?: number;
   openInNewTab?: boolean;
   onOpenLink?: (url: string) => void;
   onDelete?: (id: string) => void;
@@ -889,29 +940,32 @@ function LinkRow({
         rel="noopener noreferrer"
         className="links-widget__link"
         aria-label={t('linksWidget.open', { title: link.title })}
+        title={iconMode ? link.title : undefined}
         onClick={handleOpen}
       >
-        <span className="links-widget__drag-handle" aria-hidden="true">
-          <GripVertical size={12} />
-        </span>
+        {!iconMode && (
+          <span className="links-widget__drag-handle" aria-hidden="true">
+            <GripVertical size={12} />
+          </span>
+        )}
         <span className="links-widget__icon">
           {link.icon ? (
-            <AnyIcon name={link.icon} size={16} />
+            <AnyIcon name={link.icon} size={iconMode ? iconSize : 16} />
           ) : favicon ? (
             <img
               src={favicon}
               alt=""
-              width="18"
-              height="18"
+              width={iconMode ? iconSize : 18}
+              height={iconMode ? iconSize : 18}
               loading="lazy"
               decoding="async"
               onError={() => setImageError(true)}
             />
           ) : (
-            <AnyIcon name="link" size={14} />
+            <AnyIcon name="link" size={iconMode ? Math.round(iconSize * 0.85) : 14} />
           )}
         </span>
-        <span className="links-widget__text">{link.title}</span>
+        {!iconMode && <span className="links-widget__text">{link.title}</span>}
       </a>
       {(onEdit || onDelete) && (
         <div className="links-widget__actions">

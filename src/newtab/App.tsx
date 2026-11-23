@@ -962,6 +962,7 @@ export function App() {
       {isAddingWidget && (
         <WidgetEditor
           linksOnly
+          defaultOpacity={themeConfig.boardOpacity}
           onSave={handleAddWidget}
           onClose={() => setIsAddingWidget(false)}
         />
@@ -970,6 +971,7 @@ export function App() {
       {editingWidget && (
         <WidgetEditor
           widget={editingWidget}
+          defaultOpacity={themeConfig.boardOpacity}
           onSave={handleUpdateWidget}
           onClose={() => setEditingWidget(null)}
         />
